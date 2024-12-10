@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<analysis_request>
+    <timestamp>{timestamp}</timestamp>
+    
+    <portfolio_data>
+        {portfolio_data}
+    </portfolio_data>
+
+    <required_analysis>
+        <portfolio_overview>
+            - Total portfolio value assessment
+            - Asset distribution analysis
+            - Performance metrics
+        </portfolio_overview>
+
+        <market_context>
+            - 24h price movements
+            - 7d trends
+            - Volume analysis
+            - Market cap considerations
+        </market_context>
+
+        <risk_assessment>
+            - Volatility analysis
+            - Concentration risks
+            - Market-specific risks
+            - Opportunity costs
+        </risk_assessment>
+
+        <recommendations>
+            - Asset-specific advice
+            - Rebalancing suggestions
+            - Risk mitigation strategies
+            - Opportunity identification
+        </recommendations>
+
+        <action_items>
+            - Specific actions to take
+            - Priority levels
+            - Timeline suggestions
+        </action_items>
+    </required_analysis>
+</analysis_request>
