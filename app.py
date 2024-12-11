@@ -206,19 +206,64 @@ if 'last_analysis_time' not in st.session_state:
     st.session_state.last_analysis_time = None
 if 'portfolio' not in st.session_state:
     st.session_state.portfolio = CryptoPortfolio()
-if 'event_loop' not in st.session_state:
-    st.session_state.event_loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(st.session_state.event_loop)
 
 # Header
 st.title("📈 Crypto Portfolio Tracker")
+
+def run_async(coroutine):
+    """Helper function to run async code"""
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(coroutine)
+    finally:
+        loop.close()
 
 def update_portfolio_data():
     """Update portfolio data and last update time"""
     with st.spinner('Updating portfolio data...'):
         st.session_state.last_update = datetime.now()
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(st.session_state.portfolio.get_portfolio_data())
+        return run_async(st.session_state.portfolio.get_portfolio_data())
+
+def calculate_rebalancing_actions(portfolio_data: dict) -> dict:
+    """Calculate necessary trades to maintain 70-30 allocation"""
+    total_value = portfolio_data['total_value_brl']
+    target_crypto_value = total_value * 0.70
+    target_usd_value = total_value * 0.30
+    
+    # Calculate current values
+    current_usd_value = 0
+    current_crypto_value = 0
+    
+    for holding in portfolio_data['holdings']:
+        if holding['symbol'] == 'USDT':
+            current_usd_value = holding['value_brl']
+        else:
+            current_crypto_value += holding['value_brl']
+    
+    # Calculate differences
+    usd_difference = target_usd_value - current_usd_value
+    crypto_difference = target_crypto_value - current_crypto_value
+    
+    return {
+        'total_portfolio_value': total_value,
+        'target_allocation': {
+            'crypto': target_crypto_value,
+            'usd': target_usd_value
+        },
+        'current_allocation': {
+            'crypto': current_crypto_value,
+            'usd': current_usd_value
+        },
+        'actions_needed': {
+            'crypto_adjustment': crypto_difference,
+            'usd_adjustment': usd_difference
+        },
+        'current_percentages': {
+            'crypto': (current_crypto_value / total_value) * 100,
+            'usd': (current_usd_value / total_value) * 100
+        }
+    }
 
 def display_portfolio_overview():
     st.title("Portfolio Overview")
@@ -244,6 +289,7 @@ def display_portfolio_overview():
             title="Portfolio Composition",
             hole=0.3
         )
+        
         st.plotly_chart(fig, use_container_width=True)
         
         # Display holdings table
@@ -290,7 +336,7 @@ def display_earnings():
     
     # Get portfolio data
     portfolio = CryptoPortfolio()
-    earnings_data = asyncio.run(portfolio.get_earnings_data())
+    earnings_data = run_async(portfolio.get_earnings_data())
     
     # Display metrics
     col1, col2, col3 = st.columns(3)
@@ -389,7 +435,7 @@ def add_transaction():
         
         # Get current holdings for symbol selection
         portfolio = CryptoPortfolio()
-        portfolio_data = asyncio.run(portfolio.get_portfolio_data())
+        portfolio_data = run_async(portfolio.get_portfolio_data())
         
         # Create list of symbols from holdings
         symbols = [h['symbol'] for h in portfolio_data['holdings']]
@@ -449,7 +495,7 @@ def edit_holdings():
     
     # Create a form for editing holdings
     portfolio = CryptoPortfolio()
-    portfolio_data = asyncio.run(portfolio.get_portfolio_data())
+    portfolio_data = run_async(portfolio.get_portfolio_data())
     
     if portfolio_data['holdings']:
         with st.form("edit_holdings_form"):
@@ -497,7 +543,7 @@ def display_market_analysis():
     
     # Get portfolio data and analysis
     portfolio = CryptoPortfolio()
-    portfolio_data = asyncio.run(portfolio.get_portfolio_data())
+    portfolio_data = run_async(portfolio.get_portfolio_data())
     analysis = portfolio.get_market_analysis(portfolio_data)
     
     # Display the analysis
