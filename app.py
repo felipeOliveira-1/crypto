@@ -213,11 +213,18 @@ st.title("📈 Crypto Portfolio Tracker")
 def run_async(coroutine):
     """Helper function to run async code"""
     try:
+        # Try to get the current event loop
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        # If there is no event loop, create a new one
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+    
+    try:
         return loop.run_until_complete(coroutine)
-    finally:
-        loop.close()
+    except Exception as e:
+        print(f"Error in async operation: {e}")
+        raise e
 
 def update_portfolio_data():
     """Update portfolio data and last update time"""
