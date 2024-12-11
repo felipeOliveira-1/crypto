@@ -179,33 +179,103 @@ def display_market_quotes_widget():
 st.set_page_config(
     page_title="Crypto Portfolio Tracker",
     page_icon="📈",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # Custom CSS
 st.markdown("""
-    <style>
+<style>
+    /* Main container styling */
     .main {
-        padding: 0rem 1rem;
+        background-color: #0E1117;
     }
-    .stAlert {
-        margin-top: 1rem;
+    
+    /* Card styling */
+    .stMetric {
+        background-color: #1E2329;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
-    </style>
+    
+    /* Table styling */
+    .dataframe {
+        background-color: #1E2329;
+        border-radius: 10px;
+        border: none !important;
+    }
+    
+    .dataframe th {
+        background-color: #262B33;
+        color: #B7BDC6 !important;
+        font-weight: 600 !important;
+        text-align: left !important;
+        padding: 12px !important;
+    }
+    
+    .dataframe td {
+        color: #E6E8EA !important;
+        padding: 12px !important;
+        border-bottom: 1px solid #2B3139 !important;
+    }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: #1E2329;
+        padding: 10px;
+        border-radius: 10px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        padding: 8px 16px;
+        border-radius: 6px;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background-color: #2B3139;
+    }
+    
+    /* Button styling */
+    .stButton button {
+        background-color: #2B3139;
+        color: #E6E8EA;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        transition: all 0.3s;
+    }
+    
+    .stButton button:hover {
+        background-color: #3B4149;
+        transform: translateY(-1px);
+    }
+    
+    /* Chart styling */
+    .js-plotly-plot {
+        background-color: #1E2329;
+        border-radius: 10px;
+        padding: 15px;
+    }
+    
+    /* Positive/Negative values */
+    .positive {
+        color: #00C087 !important;
+    }
+    
+    .negative {
+        color: #F6465D !important;
+    }
+</style>
 """, unsafe_allow_html=True)
 
 # Initialize session state
-if 'last_update' not in st.session_state:
-    st.session_state.last_update = datetime.now()
-if 'last_analysis' not in st.session_state:
-    st.session_state.last_analysis = None
-if 'last_analysis_time' not in st.session_state:
-    st.session_state.last_analysis_time = None
 if 'portfolio' not in st.session_state:
     st.session_state.portfolio = CryptoPortfolio()
-
-# Header
-st.title("📈 Crypto Portfolio Tracker")
+    
+if 'portfolio_data' not in st.session_state:
+    st.session_state.portfolio_data = None
 
 async def get_portfolio_data():
     """Async function to get portfolio data"""
@@ -285,10 +355,10 @@ def auto_rebalance(portfolio_data: dict):
         # Calculate target allocations
         allocations = calculate_target_allocations(portfolio_data)
         
-        # Check if rebalancing is needed (using 1% threshold)
+        # Check if rebalancing is needed (using 2.5% threshold)
         current_stable_pct = allocations['current_percentages']['stable']
-        if abs(current_stable_pct - 30) <= 1:
-            st.info("Portfolio is already well balanced!")
+        if abs(current_stable_pct - 30) <= 2.5:
+            st.info(f"Portfolio is already well balanced! Current allocation: {current_stable_pct:.1f}% stablecoins")
             return
         
         # Get stablecoin info (using USDT)
@@ -333,101 +403,221 @@ def auto_rebalance(portfolio_data: dict):
         st.error(f"Error during rebalancing: {str(e)}")
 
 def display_portfolio_overview():
-    st.header("Portfolio Overview")
-    portfolio_data = update_portfolio_data()
+    """Display the portfolio overview section"""
+    st.markdown("# Portfolio Overview")
     
-    if not portfolio_data['holdings']:
-        st.info("No holdings found. Please add some holdings in the Edit Holdings tab.")
+    # Get portfolio data
+    if st.session_state.portfolio_data is None:
+        with st.spinner('Loading portfolio data...'):
+            portfolio_data = run_async(st.session_state.portfolio.get_portfolio_data())
+            st.session_state.portfolio_data = portfolio_data
+            st.rerun()
+    
+    portfolio_data = st.session_state.portfolio_data
+    if not portfolio_data or not portfolio_data.get('holdings'):
+        st.warning("No portfolio data available. Please add holdings in the Edit Holdings tab.")
         return
+
+    # Portfolio Value Card
+    total_value = portfolio_data.get('total_value_brl', 0)
+    change_24h = portfolio_data.get('weighted_24h_change', 0)
     
-    # Display total value and 24h change centered
-    st.metric(
-        "Total Portfolio Value",
-        f"R$ {portfolio_data['total_value_brl']:,.2f}",
-        f"{portfolio_data['weighted_24h_change']:+.2f}%",
-        help="Total value of all holdings in Brazilian Real"
+    value_color = "positive" if change_24h >= 0 else "negative"
+    change_symbol = "↑" if change_24h >= 0 else "↓"
+    
+    st.markdown(f"""
+        <div style='text-align: center; padding: 20px;'>
+            <h3 style='color: #B7BDC6; margin-bottom: 5px;'>Total Portfolio Value</h3>
+            <h1 style='font-size: 2.5em; margin: 0;'>R$ {total_value:.2f}</h1>
+            <p class='{value_color}' style='font-size: 1.2em; margin-top: 5px;'>
+                {change_symbol} {abs(change_24h):.2f}%
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Portfolio Composition
+    st.markdown("### Portfolio Composition")
+    
+    # Create donut chart with Plotly
+    holdings = portfolio_data.get('holdings', [])
+    
+    # Sort holdings by value
+    holdings = sorted(holdings, key=lambda x: x['value_brl'], reverse=True)
+    
+    labels = [h['symbol'] for h in holdings]
+    values = [h['value_brl'] for h in holdings]
+    colors = ['#1E88E5', '#FFC107', '#E53935', '#43A047', '#5E35B1', '#FB8C00']
+    
+    fig = go.Figure(data=[go.Pie(
+        labels=labels,
+        values=values,
+        hole=.4,
+        marker=dict(colors=colors),
+        textinfo='label+percent',
+        textposition='outside',
+        textfont=dict(size=14, color='#E6E8EA'),
+    )])
+    
+    fig.update_layout(
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=12, color='#E6E8EA')
+        ),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        margin=dict(t=30, l=0, r=0, b=0),
+        height=400
     )
     
-    # Create pie chart of portfolio composition
-    fig = go.Figure(data=[go.Pie(
-        labels=[h['symbol'] for h in portfolio_data['holdings']],
-        values=[h['value_brl'] for h in portfolio_data['holdings']],
-        hole=.3
-    )])
-    fig.update_layout(title="Portfolio Composition")
-    st.plotly_chart(fig)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Holdings Table
+    st.markdown("### Holdings Details")
     
-    # Display holdings table
-    holdings_df = pd.DataFrame(portfolio_data['holdings'])
-    holdings_df = holdings_df[[
-        'symbol', 'amount', 'price_brl', 'value_brl',
-        'percent_change_24h', 'percent_change_7d'
-    ]]
-    holdings_df.columns = [
-        'Symbol', 'Amount', 'Price (R$)', 'Value (R$)',
-        '24h Change (%)', '7d Change (%)'
-    ]
+    # Create DataFrame
+    df = pd.DataFrame(holdings)
+    df['price_brl'] = df['price_brl'].map('R$ {:.2f}'.format)
+    df['value_brl'] = df['value_brl'].map('R$ {:.2f}'.format)
+    df['percent_change_24h'] = df['percent_change_24h'].map('{:+.2f}%'.format)
+    df['percent_change_7d'] = df['percent_change_7d'].map('{:+.2f}%'.format)
     
-    # Format the dataframe using string formatting
-    holdings_df = holdings_df.assign(**{
-        'Price (R$)': [f'R$ {x:,.2f}' for x in holdings_df['Price (R$)']],
-        'Value (R$)': [f'R$ {x:,.2f}' for x in holdings_df['Value (R$)']],
-        '24h Change (%)': [f'{x:+.2f}%' for x in holdings_df['24h Change (%)']],
-        '7d Change (%)': [f'{x:+.2f}%' for x in holdings_df['7d Change (%)']],
+    # Rename columns
+    df = df.rename(columns={
+        'symbol': 'Symbol',
+        'amount': 'Amount',
+        'price_brl': 'Price (BRL)',
+        'value_brl': 'Value (BRL)',
+        'percent_change_24h': '24h Change',
+        'percent_change_7d': '7d Change'
     })
     
+    # Apply conditional styling
+    def style_negative_positive(val):
+        try:
+            value = float(val.strip('%'))
+            color = '#00C087' if value >= 0 else '#F6465D'
+            return f'color: {color}'
+        except:
+            return ''
+
+    # Style the dataframe
+    styled_df = df.style.applymap(
+        style_negative_positive,
+        subset=['24h Change', '7d Change']
+    )
+    
     st.dataframe(
-        holdings_df.style.apply(lambda x: ['background-color: #0f1117'] * len(x)),
-        hide_index=True
+        styled_df,
+        hide_index=True,
+        use_container_width=True
     )
 
 def edit_holdings():
-    st.header("Edit Holdings")
+    """Edit portfolio holdings"""
+    st.markdown("# Edit Holdings")
     
-    # Create a form for editing holdings
-    portfolio = CryptoPortfolio()
-    portfolio_data = run_async(portfolio.get_portfolio_data())
+    portfolio = st.session_state.portfolio
     
-    if portfolio_data['holdings']:
-        with st.form("edit_holdings_form"):
-            edited_holdings = {}
+    # Form for adding new holdings
+    with st.form("add_holding"):
+        st.markdown("### Add New Holding")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Get list of current symbols from portfolio
+            current_symbols = list(portfolio.portfolio.keys())
+            # Add an option for new symbol
+            symbol_options = ["New Symbol"] + current_symbols
+            symbol_choice = st.selectbox("Select Symbol", symbol_options)
             
-            # Create two columns for better layout
-            col1, col2 = st.columns(2)
-            
-            for i, (symbol, amount) in enumerate(st.session_state.portfolio.portfolio.items()):
-                # Alternate between columns
-                with col1 if i % 2 == 0 else col2:
-                    current_value = None
-                    for holding in portfolio_data['holdings']:
-                        if holding['symbol'] == symbol:
-                            current_value = f"Current Value: R$ {holding['value_brl']:,.2f}"
-                            break
-                    
-                    new_amount = st.number_input(
-                        f"{symbol} Amount",
-                        min_value=0.0,
-                        value=float(amount),
-                        format="%.8f",
-                        help=current_value,
-                        key=f"edit_{symbol}"
-                    )
-                    edited_holdings[symbol] = new_amount
-            
-            # Add submit button
-            if st.form_submit_button("Update Holdings"):
-                # Update portfolio with new values
-                for symbol, amount in edited_holdings.items():
-                    st.session_state.portfolio.update_holdings(symbol, amount)
+            if symbol_choice == "New Symbol":
+                symbol = st.text_input("Enter Symbol (e.g., BTC)", "").strip().upper()
+            else:
+                symbol = symbol_choice
                 
-                # Force portfolio save
-                st.session_state.portfolio._save_portfolio()
-                
-                st.success("Holdings updated successfully!")
-                # Force a rerun to update all displays
-                st.rerun()
-    else:
-        st.info("No holdings to edit. Add some transactions first!")
+        with col2:
+            amount = st.number_input(
+                "Amount",
+                min_value=0.0,
+                value=0.0,
+                step=0.00000001,
+                format="%f"
+            )
+        
+        submitted = st.form_submit_button("Add Holding")
+        if submitted:
+            if symbol_choice == "New Symbol" and not symbol:
+                st.error("Please enter a symbol")
+            elif amount <= 0:
+                st.error("Amount must be greater than 0")
+            else:
+                try:
+                    if symbol_choice == "New Symbol":
+                        portfolio.add_holding(symbol, amount)
+                        st.success(f"Added {amount} {symbol} to portfolio")
+                    else:
+                        portfolio.update_holdings(symbol, amount)
+                        st.success(f"Updated {symbol} amount to {amount}")
+                    # Update portfolio data
+                    portfolio_data = run_async(portfolio.get_portfolio_data())
+                    st.session_state.portfolio_data = portfolio_data
+                    st.rerun()
+                except Exception as e:
+                    st.error(str(e))
+    
+    # Display current holdings with edit/delete options
+    st.markdown("### Current Holdings")
+    holdings = [{"symbol": symbol, "amount": amount} for symbol, amount in portfolio.portfolio.items()]
+    
+    if not holdings:
+        st.info("No holdings in portfolio. Add some above!")
+        return
+    
+    for holding in holdings:
+        with st.container():
+            col1, col2, col3 = st.columns([2, 1, 1])
+            
+            with col1:
+                st.markdown(f"**{holding['symbol']}**")
+            with col2:
+                new_amount = st.number_input(
+                    "Amount",
+                    min_value=0.0,
+                    value=float(holding['amount']),
+                    step=0.00000001,
+                    key=f"amount_{holding['symbol']}",
+                    format="%f"
+                )
+                if new_amount != float(holding['amount']):
+                    try:
+                        portfolio.update_holdings(holding['symbol'], new_amount)
+                        st.success(f"Updated {holding['symbol']} amount to {new_amount}")
+                        # Update portfolio data
+                        portfolio_data = run_async(portfolio.get_portfolio_data())
+                        st.session_state.portfolio_data = portfolio_data
+                        st.rerun()
+                    except Exception as e:
+                        st.error(str(e))
+            
+            with col3:
+                if st.button("🗑️", key=f"delete_{holding['symbol']}"):
+                    if st.button(f"Confirm delete {holding['symbol']}?", key=f"confirm_delete_{holding['symbol']}"):
+                        try:
+                            portfolio.remove_holding(holding['symbol'])
+                            st.success(f"Removed {holding['symbol']} from portfolio")
+                            # Update portfolio data
+                            portfolio_data = run_async(portfolio.get_portfolio_data())
+                            st.session_state.portfolio_data = portfolio_data
+                            st.rerun()
+                        except Exception as e:
+                            st.error(str(e))
+            
+            st.markdown("---")
 
 def display_market_analysis():
     st.title("Market Analysis")
@@ -482,13 +672,12 @@ with tab5:
 
 # Sidebar
 with st.sidebar:
-    st.header("Settings")
-    
+    st.title("Controls")
     if st.button("🔄 Update Values"):
-        st.rerun()
-    
-    if st.session_state.last_update:
-        st.write(f"Last update: {st.session_state.last_update.strftime('%H:%M:%S')}")
+        with st.spinner('Updating portfolio data...'):
+            portfolio_data = run_async(st.session_state.portfolio.get_portfolio_data())
+            st.session_state.portfolio_data = portfolio_data
+            st.rerun()
 
 # Footer
 st.markdown("---")

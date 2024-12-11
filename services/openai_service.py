@@ -1,15 +1,22 @@
 import os
 import httpx
 from openai import OpenAI
-from typing import Dict
+from typing import Dict, Optional, NoReturn
+from httpx import Proxy
 
 class OpenAIService:
     def __init__(self):
-        self.api_key = os.getenv('OPENAI_API_KEY')
-        self.proxies = os.getenv('PROXIES')
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is required")
+        self.api_key = api_key
+        
+        proxy_str = os.getenv('PROXIES')
         
         # Initialize OpenAI client with custom httpx client
-        transport = httpx.HTTPTransport(proxy=self.proxies)
+        transport = httpx.HTTPTransport(
+            proxy=Proxy(url=proxy_str) if proxy_str else None
+        )
         http_client = httpx.Client(transport=transport, verify=False)
         self.client = OpenAI(
             api_key=self.api_key,
@@ -17,7 +24,18 @@ class OpenAIService:
         )
 
     def generate_market_analysis(self, portfolio_data: Dict, template_data: Dict) -> str:
-        """Generate market analysis using OpenAI"""
+        """Generate market analysis using OpenAI
+        
+        Args:
+            portfolio_data: Dictionary containing portfolio information
+            template_data: Dictionary containing template strings
+            
+        Returns:
+            str: Generated market analysis text
+            
+        Raises:
+            Exception: If there's an error during analysis generation
+        """
         try:
             # Calculate rebalancing data using the new allocation logic
             total_value = portfolio_data['total_value_brl']
@@ -134,6 +152,9 @@ class OpenAIService:
                 presence_penalty=0.3,
                 frequency_penalty=0.3
             )
+
+            if not response.choices or not response.choices[0].message.content:
+                return "No analysis could be generated. Please try again."
 
             return response.choices[0].message.content
 

@@ -86,13 +86,47 @@ class CryptoPortfolio:
         except Exception as e:
             print(f"Error saving daily values: {e}")
 
-    def update_holdings(self, symbol: str, amount: float):
+    def add_holding(self, symbol: str, amount: float) -> None:
+        """Add a new cryptocurrency holding"""
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("Symbol must be a non-empty string")
+        if not isinstance(amount, (int, float)) or amount <= 0:
+            raise ValueError("Amount must be a positive number")
+        
+        symbol = symbol.strip().upper()
+        if symbol in self.portfolio:
+            raise ValueError(f"Symbol {symbol} already exists in portfolio")
+            
+        self.portfolio[symbol] = float(amount)
+        self._save_portfolio()
+
+    def update_holdings(self, symbol: str, amount: float) -> None:
         """Update or add a new cryptocurrency holding"""
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("Symbol must be a non-empty string")
+        if not isinstance(amount, (int, float)):
+            raise ValueError("Amount must be a number")
+            
+        symbol = symbol.strip().upper()
+        if symbol not in self.portfolio:
+            raise ValueError(f"Symbol {symbol} not found in portfolio")
+            
         if amount <= 0:
-            if symbol in self.portfolio:
-                del self.portfolio[symbol]
+            del self.portfolio[symbol]
         else:
-            self.portfolio[symbol] = amount
+            self.portfolio[symbol] = float(amount)
+        self._save_portfolio()
+
+    def remove_holding(self, symbol: str) -> None:
+        """Remove a cryptocurrency holding"""
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("Symbol must be a non-empty string")
+            
+        symbol = symbol.strip().upper()
+        if symbol not in self.portfolio:
+            raise ValueError(f"Symbol {symbol} not found in portfolio")
+            
+        del self.portfolio[symbol]
         self._save_portfolio()
 
     async def get_portfolio_data(self) -> Dict:
