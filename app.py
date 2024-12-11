@@ -196,26 +196,31 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Initialize session state
-if 'portfolio' not in st.session_state:
-    st.session_state.portfolio = CryptoPortfolio()
 if 'last_update' not in st.session_state:
-    st.session_state.last_update = None
+    st.session_state.last_update = datetime.now()
 if 'transaction_manager' not in st.session_state:
     st.session_state.transaction_manager = TransactionManager()
 if 'last_analysis' not in st.session_state:
     st.session_state.last_analysis = None
 if 'last_analysis_time' not in st.session_state:
     st.session_state.last_analysis_time = None
+if 'portfolio' not in st.session_state:
+    st.session_state.portfolio = CryptoPortfolio()
 
 # Header
 st.title("📈 Crypto Portfolio Tracker")
+
+def update_portfolio_data():
+    """Update portfolio data and last update time"""
+    with st.spinner('Updating portfolio data...'):
+        st.session_state.last_update = datetime.now()
+        return asyncio.run(st.session_state.portfolio.get_portfolio_data())
 
 def display_portfolio_overview():
     st.title("Portfolio Overview")
     
     # Get portfolio data
-    portfolio = CryptoPortfolio()
-    portfolio_data = asyncio.run(portfolio.get_portfolio_data())
+    portfolio_data = update_portfolio_data()
     
     if portfolio_data['holdings']:
         # Display portfolio metrics
@@ -535,26 +540,12 @@ with tab7:
 # Sidebar
 with st.sidebar:
     st.header("Settings")
-    update_interval = st.slider(
-        "Update interval (seconds)",
-        min_value=30,
-        max_value=300,
-        value=60,
-        step=30
-    )
     
-    if st.button("Update Now"):
-        st.session_state.portfolio = CryptoPortfolio()
-        st.session_state.last_update = datetime.now()
-
-# Auto-refresh logic
-if st.session_state.last_update:
-    st.sidebar.write(f"Last update: {st.session_state.last_update.strftime('%H:%M:%S')}")
-    
-    # Check if it's time to update
-    time_since_update = (datetime.now() - st.session_state.last_update).total_seconds()
-    if time_since_update >= update_interval:
+    if st.button("🔄 Update Data"):
         st.rerun()
+
+    if st.session_state.last_update:
+        st.write(f"Last update: {st.session_state.last_update.strftime('%H:%M:%S')}")
 
 # Footer
 st.markdown("---")
