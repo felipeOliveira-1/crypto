@@ -43,5 +43,95 @@
         "total_brl": 20.91,
         "type": "buy",
         "notes": ""
+    },
+    {
+        "timestamp": "2024-12-11T17:07:41.478944",
+        "symbol": "USDT",
+        "amount": 0.8657727266206888,
+        "price_brl": 5.9617439011255176,
+        "total_brl": 5.161515272691702,
+        "type": "SELL",
+        "notes": "Rebalancing: Selling USDT to buy UNI"
+    },
+    {
+        "timestamp": "2024-12-11T17:07:41.490441",
+        "symbol": "UNI",
+        "amount": 0.05068814599735624,
+        "price_brl": 101.82884323606771,
+        "total_brl": 5.161515272691702,
+        "type": "BUY",
+        "notes": "Rebalancing: Buying UNI to adjust portfolio allocation"
+    },
+    {
+        "timestamp": "2024-12-11T17:07:41.490441",
+        "symbol": "USDT",
+        "amount": 0.779472763003165,
+        "price_brl": 5.9617439011255176,
+        "total_brl": 4.647016990927575,
+        "type": "SELL",
+        "notes": "Rebalancing: Selling USDT to buy ETH"
+    },
+    {
+        "timestamp": "2024-12-11T17:07:41.492368",
+        "symbol": "ETH",
+        "amount": 0.0002044793251579747,
+        "price_brl": 22726.09706305235,
+        "total_brl": 4.647016990927575,
+        "type": "BUY",
+        "notes": "Rebalancing: Buying ETH to adjust portfolio allocation"
+    },
+    {
+        "timestamp": "2024-12-11T17:07:41.493785",
+        "symbol": "USDT",
+        "amount": 0.7623288736453108,
+        "price_brl": 5.9617439011255176,
+        "total_brl": 4.5448095131068165,
+        "type": "SELL",
+        "notes": "Rebalancing: Selling USDT to buy BTC"
+    },
+    {
+        "timestamp": "2024-12-11T17:07:41.494782",
+        "symbol": "BTC",
+        "amount": 7.521644922552808e-06,
+        "price_brl": 604230.7979042876,
+        "total_brl": 4.5448095131068165,
+        "type": "BUY",
+        "notes": "Rebalancing: Buying BTC to adjust portfolio allocation"
+    },
+    {
+        "timestamp": "2024-12-11T17:07:41.495780",
+        "symbol": "USDT",
+        "amount": 0.7416699455882557,
+        "price_brl": 5.9617439011255176,
+        "total_brl": 4.421646274758878,
+        "type": "SELL",
+        "notes": "Rebalancing: Selling USDT to buy LINK"
+    },
+    {
+        "timestamp": "2024-12-11T17:07:41.497782",
+        "symbol": "LINK",
+        "amount": 0.031067088143945987,
+        "price_brl": 142.32573887426008,
+        "total_brl": 4.421646274758878,
+        "type": "BUY",
+        "notes": "Rebalancing: Buying LINK to adjust portfolio allocation"
+    },
+    {
+        "timestamp": "2024-12-11T17:07:41.497782",
+        "symbol": "USDT",
+        "amount": 0.6968746367380659,
+        "price_brl": 5.9617439011255176,
+        "total_brl": 4.154588115422225,
+        "type": "SELL",
+        "notes": "Rebalancing: Selling USDT to buy LTC"
+    },
+    {
+        "timestamp": "2024-12-11T17:07:41.499366",
+        "symbol": "LTC",
+        "amount": 0.005927016905668821,
+        "price_brl": 700.9576961807923,
+        "total_brl": 4.154588115422225,
+        "type": "BUY",
+        "notes": "Rebalancing: Buying LTC to adjust portfolio allocation"
     }
 ]
