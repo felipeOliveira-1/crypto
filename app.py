@@ -8,6 +8,7 @@ from datetime import datetime
 import time
 import asyncio
 import streamlit.components.v1 as components
+import os
 
 # Add this function after the imports
 def display_tradingview_widget():
@@ -231,45 +232,149 @@ def update_portfolio_data():
         st.session_state.last_update = datetime.now()
         return run_async(get_portfolio_data())
 
-def calculate_rebalancing_actions(portfolio_data: dict) -> dict:
-    """Calculate necessary trades to maintain 70-30 allocation"""
+def calculate_target_allocations(portfolio_data: dict) -> dict:
+    """Calculate target allocations for each asset based on the 70-30 strategy"""
     total_value = portfolio_data['total_value_brl']
-    target_crypto_value = total_value * 0.70
-    target_usd_value = total_value * 0.30
+    holdings = portfolio_data['holdings']
+    
+    # Separate stablecoins and crypto
+    stablecoins = [h for h in holdings if h['symbol'] in ['USDT', 'MUSD']]
+    cryptos = [h for h in holdings if h['symbol'] not in ['USDT', 'MUSD']]
     
     # Calculate current values
-    current_usd_value = 0
-    current_crypto_value = 0
+    current_stable_value = sum(h['value_brl'] for h in stablecoins)
+    current_crypto_value = sum(h['value_brl'] for h in cryptos)
     
-    for holding in portfolio_data['holdings']:
-        if holding['symbol'] == 'USDT':
-            current_usd_value = holding['value_brl']
-        else:
-            current_crypto_value += holding['value_brl']
+    # Target values (70-30 split)
+    target_crypto_value = total_value * 0.70
+    target_stable_value = total_value * 0.30
     
-    # Calculate differences
-    usd_difference = target_usd_value - current_usd_value
-    crypto_difference = target_crypto_value - current_crypto_value
+    # Calculate target allocations for individual cryptos
+    # Maintain relative proportions within crypto allocation
+    crypto_allocations = {}
+    if current_crypto_value > 0:
+        for crypto in cryptos:
+            current_weight = crypto['value_brl'] / current_crypto_value
+            target_value = target_crypto_value * current_weight
+            crypto_allocations[crypto['symbol']] = {
+                'current_value': crypto['value_brl'],
+                'target_value': target_value,
+                'difference': target_value - crypto['value_brl'],
+                'price_brl': crypto['price_brl']
+            }
+    
+    # Stablecoin allocation
+    stable_allocations = {}
+    for stable in stablecoins:
+        stable_allocations[stable['symbol']] = {
+            'current_value': stable['value_brl'],
+            'target_value': target_stable_value,
+            'difference': target_stable_value - stable['value_brl'],
+            'price_brl': stable['price_brl']
+        }
     
     return {
-        'total_portfolio_value': total_value,
-        'target_allocation': {
-            'crypto': target_crypto_value,
-            'usd': target_usd_value
-        },
-        'current_allocation': {
-            'crypto': current_crypto_value,
-            'usd': current_usd_value
-        },
-        'actions_needed': {
-            'crypto_adjustment': crypto_difference,
-            'usd_adjustment': usd_difference
-        },
+        'total_value': total_value,
+        'crypto_allocations': crypto_allocations,
+        'stable_allocations': stable_allocations,
         'current_percentages': {
             'crypto': (current_crypto_value / total_value) * 100,
-            'usd': (current_usd_value / total_value) * 100
+            'stable': (current_stable_value / total_value) * 100
         }
     }
+
+def auto_rebalance(portfolio_data: dict):
+    """Execute automatic rebalancing transactions based on the 70-30 strategy"""
+    try:
+        # Calculate target allocations
+        allocations = calculate_target_allocations(portfolio_data)
+        
+        # Check if rebalancing is needed (using 1% threshold)
+        current_stable_pct = allocations['current_percentages']['stable']
+        if abs(current_stable_pct - 30) <= 1:
+            st.info("Portfolio is already well balanced!")
+            return
+        
+        # Get stablecoin info
+        stable_info = next(
+            (alloc for symbol, alloc in allocations['stable_allocations'].items()),
+            None
+        )
+        if not stable_info:
+            st.error("No stablecoin holdings found! Cannot rebalance without USDT or MUSD.")
+            return
+        
+        # Sort crypto allocations by absolute difference
+        crypto_trades = sorted(
+            [
+                {'symbol': symbol, **alloc}
+                for symbol, alloc in allocations['crypto_allocations'].items()
+            ],
+            key=lambda x: abs(x['difference']),
+            reverse=True
+        )
+        
+        if not crypto_trades:
+            st.error("No crypto holdings found to rebalance!")
+            return
+        
+        # Execute trades
+        for trade in crypto_trades:
+            if abs(trade['difference']) <= 1:  # Skip small adjustments
+                continue
+                
+            if trade['difference'] < 0:  # Need to sell crypto
+                # Calculate amount to sell
+                amount_to_sell = abs(trade['difference']) / trade['price_brl']
+                
+                # Add sell transaction for crypto
+                notes = f"Rebalancing: Selling {trade['symbol']} to adjust portfolio allocation"
+                st.session_state.transaction_manager.add_transaction(
+                    transaction_type='SELL',
+                    symbol=trade['symbol'],
+                    amount=amount_to_sell,
+                    price_brl=trade['price_brl'],
+                    notes=notes
+                )
+                
+                # Add buy transaction for stablecoin
+                notes = f"Rebalancing: Buying USDT from {trade['symbol']} sale"
+                st.session_state.transaction_manager.add_transaction(
+                    transaction_type='BUY',
+                    symbol='USDT',
+                    amount=abs(trade['difference']) / stable_info['price_brl'],
+                    price_brl=stable_info['price_brl'],
+                    notes=notes
+                )
+            else:  # Need to buy crypto
+                # Calculate amount to buy
+                amount_to_buy = trade['difference'] / trade['price_brl']
+                
+                # Add sell transaction for stablecoin
+                notes = f"Rebalancing: Selling USDT to buy {trade['symbol']}"
+                st.session_state.transaction_manager.add_transaction(
+                    transaction_type='SELL',
+                    symbol='USDT',
+                    amount=trade['difference'] / stable_info['price_brl'],
+                    price_brl=stable_info['price_brl'],
+                    notes=notes
+                )
+                
+                # Add buy transaction for crypto
+                notes = f"Rebalancing: Buying {trade['symbol']} to adjust portfolio allocation"
+                st.session_state.transaction_manager.add_transaction(
+                    transaction_type='BUY',
+                    symbol=trade['symbol'],
+                    amount=amount_to_buy,
+                    price_brl=trade['price_brl'],
+                    notes=notes
+                )
+        
+        st.success(f"Rebalancing transactions executed successfully! Portfolio adjusted from {current_stable_pct:.1f}% stablecoins to target 30% allocation.")
+        st.rerun()
+        
+    except Exception as e:
+        st.error(f"Error during rebalancing: {str(e)}")
 
 def display_portfolio_overview():
     st.title("Portfolio Overview")
@@ -544,98 +649,6 @@ def edit_holdings():
     else:
         st.info("No holdings to edit. Add some transactions first!")
 
-def auto_rebalance(portfolio_data: dict):
-    """Execute automatic rebalancing transactions based on the 70-30 strategy"""
-    try:
-        total_value = portfolio_data['total_value_brl']
-        target_usd = total_value * 0.30
-        
-        # Calculate current USD value
-        current_usd = sum(h['value_brl'] for h in portfolio_data['holdings'] if h['symbol'] in ['USDT', 'MUSD'])
-        
-        # Calculate how much to rebalance
-        usd_difference = target_usd - current_usd
-        
-        if abs(usd_difference) <= 1:  # Using 1 BRL threshold
-            st.info("Portfolio is already well balanced!")
-            return
-        
-        # Find USD holding first
-        usd_holding = next((h for h in portfolio_data['holdings'] if h['symbol'] == 'USDT'), None)
-        if not usd_holding:
-            st.error("No USDT holdings found! Cannot rebalance without USDT.")
-            return
-            
-        # Get all crypto holdings (excluding stablecoins)
-        crypto_holdings = [h for h in portfolio_data['holdings'] if h['symbol'] not in ['USDT', 'MUSD']]
-        if not crypto_holdings:
-            st.error("No crypto holdings found to rebalance!")
-            return
-        
-        # Format current allocation for notes
-        current_crypto_pct = ((total_value - current_usd) / total_value) * 100
-        current_usd_pct = (current_usd / total_value) * 100
-        
-        # Determine if we need to buy or sell USD
-        if usd_difference > 0:
-            # Need to sell crypto and buy USD
-            largest_holding = max(crypto_holdings, key=lambda x: x['value_brl'])
-            
-            # Calculate amount to sell in the crypto's units
-            amount_to_sell = abs(usd_difference) / largest_holding['price_brl']
-            
-            # Add sell transaction for crypto
-            notes = f"Rebalancing: Selling {largest_holding['symbol']} to increase USD allocation from {current_usd_pct:.1f}% to 30%"
-            st.session_state.transaction_manager.add_transaction(
-                transaction_type='SELL',
-                symbol=largest_holding['symbol'],
-                amount=amount_to_sell,
-                price_brl=largest_holding['price_brl'],
-                notes=notes
-            )
-            
-            # Add buy transaction for USD
-            notes = f"Rebalancing: Buying USDT to increase USD allocation from {current_usd_pct:.1f}% to 30%"
-            st.session_state.transaction_manager.add_transaction(
-                transaction_type='BUY',
-                symbol='USDT',
-                amount=abs(usd_difference) / usd_holding['price_brl'],
-                price_brl=usd_holding['price_brl'],
-                notes=notes
-            )
-            
-        else:
-            # Need to sell USD and buy crypto
-            smallest_holding = min(crypto_holdings, key=lambda x: x['value_brl'])
-            amount_to_sell_usd = abs(usd_difference)
-            
-            # Add sell transaction for USD
-            notes = f"Rebalancing: Selling USDT to decrease USD allocation from {current_usd_pct:.1f}% to 30%"
-            st.session_state.transaction_manager.add_transaction(
-                transaction_type='SELL',
-                symbol='USDT',
-                amount=amount_to_sell_usd / usd_holding['price_brl'],
-                price_brl=usd_holding['price_brl'],
-                notes=notes
-            )
-            
-            # Add buy transaction for crypto
-            notes = f"Rebalancing: Buying {smallest_holding['symbol']} to decrease USD allocation from {current_usd_pct:.1f}% to 30%"
-            st.session_state.transaction_manager.add_transaction(
-                transaction_type='BUY',
-                symbol=smallest_holding['symbol'],
-                amount=amount_to_sell_usd / smallest_holding['price_brl'],
-                price_brl=smallest_holding['price_brl'],
-                notes=notes
-            )
-        
-        st.success(f"Rebalancing transactions executed successfully! Portfolio adjusted from {current_usd_pct:.1f}% USD to target 30% USD allocation.")
-        st.rerun()
-        
-    except Exception as e:
-        st.error(f"Error during rebalancing: {str(e)}")
-        return
-
 def display_market_analysis():
     st.title("Market Analysis")
     
@@ -663,15 +676,78 @@ def display_market_analysis():
         st.error(f"Error in market analysis: {str(e)}")
         return
 
+def initialize_portfolio():
+    """Create a new portfolio through the UI"""
+    st.header("Initialize New Portfolio")
+    
+    # Warning about existing portfolio
+    if os.path.exists('portfolio.json'):
+        st.warning("⚠️ You already have an existing portfolio. Creating a new one will replace it.")
+    
+    # Initialize portfolio assets
+    if 'portfolio_assets' not in st.session_state:
+        st.session_state.portfolio_assets = []
+    
+    # Form for adding new assets
+    with st.form(key='add_asset_form'):
+        col1, col2 = st.columns(2)
+        with col1:
+            symbol = st.text_input("Asset Symbol (e.g., BTC, ETH)", key='new_asset_symbol').upper()
+        with col2:
+            quantity = st.number_input("Quantity", min_value=0.0, format="%f", key='new_asset_quantity')
+        
+        submit_asset = st.form_submit_button("Add Asset")
+        
+        if submit_asset and symbol and quantity > 0:
+            # Validate symbol using CMC API
+            portfolio = CryptoPortfolio()
+            asyncio.run(portfolio.cmc_service.get_latest_quotes([symbol]))
+            
+            # Add to session state if valid
+            asset = {'symbol': symbol, 'quantity': quantity}
+            if asset not in st.session_state.portfolio_assets:
+                st.session_state.portfolio_assets.append(asset)
+            
+            # Clear input fields
+            st.session_state.new_asset_symbol = ''
+            st.session_state.new_asset_quantity = 0.0
+    
+    # Display current assets
+    if st.session_state.portfolio_assets:
+        st.subheader("Current Assets")
+        df = pd.DataFrame(st.session_state.portfolio_assets)
+        st.dataframe(df)
+        
+        # Save portfolio button
+        if st.button("Save Portfolio"):
+            new_portfolio = {asset['symbol']: asset['quantity'] for asset in st.session_state.portfolio_assets}
+            
+            # Save to file
+            portfolio = CryptoPortfolio()
+            portfolio.portfolio = new_portfolio
+            portfolio._save_portfolio()
+            
+            # Clear session state
+            st.session_state.portfolio_assets = []
+            
+            st.success("✅ Portfolio saved successfully! Please refresh the page to see your new portfolio.")
+    
+    # Option to clear all assets
+    if st.session_state.portfolio_assets:
+        if st.button("Clear All Assets"):
+            st.session_state.portfolio_assets = []
+            st.experimental_rerun()
+
 # Create tabs
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "Portfolio Overview",
     "Transaction History",
     "Add Transaction",
     "Edit Holdings",
     "Earnings",
     "AI Analysis",
-    "TradingView Widget"
+    "TradingView Widget",
+    "Initialize Portfolio"
 ])
 
 with tab1:
@@ -694,6 +770,9 @@ with tab6:
 
 with tab7:
     display_tradingview_widget()
+
+with tab8:
+    initialize_portfolio()
 
 # Sidebar
 with st.sidebar:
