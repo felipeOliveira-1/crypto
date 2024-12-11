@@ -206,6 +206,9 @@ if 'last_analysis_time' not in st.session_state:
     st.session_state.last_analysis_time = None
 if 'portfolio' not in st.session_state:
     st.session_state.portfolio = CryptoPortfolio()
+if 'event_loop' not in st.session_state:
+    st.session_state.event_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(st.session_state.event_loop)
 
 # Header
 st.title("📈 Crypto Portfolio Tracker")
@@ -214,7 +217,8 @@ def update_portfolio_data():
     """Update portfolio data and last update time"""
     with st.spinner('Updating portfolio data...'):
         st.session_state.last_update = datetime.now()
-        return asyncio.run(st.session_state.portfolio.get_portfolio_data())
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(st.session_state.portfolio.get_portfolio_data())
 
 def display_portfolio_overview():
     st.title("Portfolio Overview")
