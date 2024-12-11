@@ -7,6 +7,32 @@ import pandas as pd
 from datetime import datetime
 import time
 import asyncio
+import streamlit.components.v1 as components
+
+# Add this function after the imports
+def display_tradingview_widget():
+    tradingview_widget = """
+    <div class="tradingview-widget-container">
+        <div class="tradingview-widget-container__widget"></div>
+        <div class="tradingview-widget-copyright">
+            <a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank">
+                <span class="blue-text">Track all markets on TradingView</span>
+            </a>
+        </div>
+        <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-timeline.js" async>
+        {
+            "feedMode": "all_symbols",
+            "isTransparent": false,
+            "displayMode": "regular",
+            "width": "100%",
+            "height": 550,
+            "colorTheme": "dark",
+            "locale": "en"
+        }
+        </script>
+    </div>
+    """
+    components.html(tradingview_widget, height=600)
 
 # Page config
 st.set_page_config(
@@ -50,53 +76,61 @@ def display_portfolio_overview():
     portfolio_data = asyncio.run(portfolio.get_portfolio_data())
     
     if portfolio_data['holdings']:
-        # Display portfolio metrics
-        col1, col2, col3 = st.columns(3)
+        # Create two columns for layout
+        col1, col2 = st.columns([2, 1])
+        
         with col1:
-            st.metric("Total Balance", f"R$ {portfolio_data['total_value_brl']:,.2f}")
+            # Display portfolio metrics
+            metric_col1, metric_col2, metric_col3 = st.columns(3)
+            with metric_col1:
+                st.metric("Total Balance", f"R$ {portfolio_data['total_value_brl']:,.2f}")
+            with metric_col2:
+                st.metric("24h Change", f"{portfolio_data['weighted_24h_change']:.2f}%")
+            with metric_col3:
+                st.metric("7d Change", f"{portfolio_data['weighted_7d_change']:.2f}%")
+            
+            # Display portfolio composition pie chart
+            st.subheader("Portfolio Composition")
+            fig = px.pie(
+                values=[h['value_brl'] for h in portfolio_data['holdings']],
+                names=[h['symbol'] for h in portfolio_data['holdings']],
+                title="Portfolio Composition",
+                hole=0.3
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Display holdings table
+            st.subheader("Holdings")
+            df = pd.DataFrame([{
+                'Symbol': h['symbol'],
+                'Amount': h['amount'],
+                'Price (BRL)': h['price_brl'],
+                'Total Value (BRL)': h['value_brl'],
+                '24h Change (%)': h['percent_change_24h'] / 100,
+                '7d Change (%)': h['percent_change_7d'] / 100,
+                'Portfolio %': h['portfolio_percentage']
+            } for h in portfolio_data['holdings']]).set_index('Symbol')
+            
+            st.dataframe(
+                df.style.format({
+                    'Amount': '{:.8f}',
+                    'Price (BRL)': 'R$ {:,.2f}',
+                    'Total Value (BRL)': 'R$ {:,.2f}',
+                    '24h Change (%)': '{:.2%}',
+                    '7d Change (%)': '{:.2%}',
+                    'Portfolio %': '{:.2f}%'
+                }).background_gradient(
+                    subset=['24h Change (%)'],
+                    cmap='RdYlGn',
+                    vmin=-10,
+                    vmax=10
+                ),
+                use_container_width=True
+            )
+        
         with col2:
-            st.metric("24h Change", f"{portfolio_data['weighted_24h_change']:.2f}%")
-        with col3:
-            st.metric("7d Change", f"{portfolio_data['weighted_7d_change']:.2f}%")
-        
-        # Display portfolio composition pie chart
-        st.subheader("Portfolio Composition")
-        fig = px.pie(
-            values=[h['value_brl'] for h in portfolio_data['holdings']],
-            names=[h['symbol'] for h in portfolio_data['holdings']],
-            title="Portfolio Composition",
-            hole=0.3
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Display holdings table
-        st.subheader("Holdings")
-        df = pd.DataFrame([{
-            'Symbol': h['symbol'],
-            'Amount': h['amount'],
-            'Price (BRL)': h['price_brl'],
-            'Total Value (BRL)': h['value_brl'],
-            '24h Change (%)': h['percent_change_24h'] / 100,
-            '7d Change (%)': h['percent_change_7d'] / 100,
-            'Portfolio %': h['portfolio_percentage']
-        } for h in portfolio_data['holdings']]).set_index('Symbol')
-        
-        st.dataframe(
-            df.style.format({
-                'Amount': '{:.8f}',
-                'Price (BRL)': 'R$ {:,.2f}',
-                'Total Value (BRL)': 'R$ {:,.2f}',
-                '24h Change (%)': '{:.2%}',
-                '7d Change (%)': '{:.2%}',
-                'Portfolio %': '{:.2f}%'
-            }).background_gradient(
-                subset=['24h Change (%)'],
-                cmap='RdYlGn',
-                vmin=-10,
-                vmax=10
-            ),
-            use_container_width=True
-        )
+            # Display TradingView widget
+            display_tradingview_widget()
     else:
         st.info("No holdings in portfolio yet. Add some transactions to get started!")
 
@@ -325,13 +359,14 @@ def display_market_analysis():
         st.rerun()
 
 # Create tabs
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "Portfolio Overview",
     "Transaction History",
     "Add Transaction",
     "Edit Holdings",
     "Earnings",
-    "AI Analysis"
+    "AI Analysis",
+    "TradingView Widget"
 ])
 
 with tab1:
@@ -351,6 +386,9 @@ with tab5:
 
 with tab6:
     display_market_analysis()
+
+with tab7:
+    display_tradingview_widget()
 
 # Sidebar
 with st.sidebar:
