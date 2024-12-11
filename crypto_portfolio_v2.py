@@ -132,7 +132,14 @@ class CryptoPortfolio:
 
     def __del__(self):
         """Cleanup on object destruction"""
-        asyncio.run(self.close())
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(self.close())
+            else:
+                asyncio.run(self.close())
+        except Exception:
+            pass  # Suppress cleanup errors during shutdown
 
     def display_portfolio(self):
         """Display portfolio information and AI analysis"""

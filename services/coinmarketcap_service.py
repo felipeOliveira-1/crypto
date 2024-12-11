@@ -114,12 +114,16 @@ class CoinMarketCapService:
 
     async def close(self):
         """Close the aiohttp session"""
-        if self.session:
+        if self.session and not self.session.closed:
             await self.session.close()
-            self.session = None
 
     def __del__(self):
-        """Ensure session is closed on object destruction"""
-        if self.session and not self.session.closed:
-            import asyncio
-            asyncio.run(self.close())
+        """Cleanup on object destruction"""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(self.close())
+            else:
+                asyncio.run(self.close())
+        except Exception:
+            pass  # Suppress cleanup errors during shutdown
