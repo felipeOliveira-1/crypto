@@ -18,7 +18,12 @@ class CoinMarketCapService:
 
     async def _ensure_session(self):
         """Ensure we have an active session"""
-        if self.session is None or self.session.closed:
+        try:
+            if self.session is None or self.session.closed:
+                timeout = aiohttp.ClientTimeout(total=10)
+                self.session = aiohttp.ClientSession(timeout=timeout)
+        except Exception:
+            # If there's any issue with the session, create a new one
             timeout = aiohttp.ClientTimeout(total=10)
             self.session = aiohttp.ClientSession(timeout=timeout)
 
@@ -31,12 +36,13 @@ class CoinMarketCapService:
                 return self._cache[cache_key]
         return None
 
-    async def get_market_data(self, symbols: list) -> Dict:
+    async def get_market_data(self, symbols: list, force_refresh: bool = False) -> Dict:
         """
         Fetch market data for given symbols including USD/BRL rate
         
         Args:
             symbols: List of cryptocurrency symbols
+            force_refresh: If True, bypass cache and fetch fresh data
             
         Returns:
             Dict containing market data for requested symbols
@@ -47,10 +53,11 @@ class CoinMarketCapService:
         cache_key = f"market_data_{','.join(sorted(symbols))}"
         
         try:
-            # Check cache first
-            cached_data = await self._get_cached_data(cache_key)
-            if cached_data is not None:
-                return cached_data
+            # Check cache first if not forcing refresh
+            if not force_refresh:
+                cached_data = await self._get_cached_data(cache_key)
+                if cached_data is not None:
+                    return cached_data
 
             await self._ensure_session()
             if self.session is None:
@@ -99,8 +106,10 @@ class CoinMarketCapService:
                     if not result:
                         raise ValueError("No valid data returned from API")
                         
-                    self._cache[cache_key] = result
-                    self._cache_time[cache_key] = datetime.now()
+                    # Only cache if not forcing refresh
+                    if not force_refresh:
+                        self._cache[cache_key] = result
+                        self._cache_time[cache_key] = datetime.now()
                     return result
                     
                 elif response.status == 429:
@@ -111,16 +120,18 @@ class CoinMarketCapService:
                     
         except asyncio.TimeoutError:
             print("Timeout while fetching market data")
-            cached_data = self._cache.get(cache_key)
-            if cached_data is not None:
-                return cached_data
+            if not force_refresh:
+                cached_data = self._cache.get(cache_key)
+                if cached_data is not None:
+                    return cached_data
             raise TimeoutError("Timeout fetching market data and no cache available")
             
         except Exception as e:
             print(f"Error fetching market data: {e}")
-            cached_data = self._cache.get(cache_key)
-            if cached_data is not None:
-                return cached_data
+            if not force_refresh:
+                cached_data = self._cache.get(cache_key)
+                if cached_data is not None:
+                    return cached_data
             raise
 
     async def close(self):

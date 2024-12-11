@@ -273,9 +273,10 @@ st.markdown("""
 # Initialize session state
 if 'portfolio' not in st.session_state:
     st.session_state.portfolio = CryptoPortfolio()
-    
 if 'portfolio_data' not in st.session_state:
     st.session_state.portfolio_data = None
+if 'last_update' not in st.session_state:
+    st.session_state.last_update = None
 
 async def get_portfolio_data():
     """Async function to get portfolio data"""
@@ -290,133 +291,82 @@ def run_async(coroutine):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
     
-    return asyncio.run(coroutine)
+    try:
+        return loop.run_until_complete(coroutine)
+    except RuntimeError:
+        # If the loop is closed, create a new one
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(coroutine)
 
 def update_portfolio_data():
     """Update portfolio data and last update time"""
-    with st.spinner('Updating portfolio data...'):
-        st.session_state.last_update = datetime.now()
-        return run_async(get_portfolio_data())
-
-def calculate_target_allocations(portfolio_data: dict) -> dict:
-    """Calculate target allocations for each asset based on the 70-30 strategy"""
-    total_value = portfolio_data['total_value_brl']
-    holdings = portfolio_data['holdings']
-    
-    # Separate stablecoins and crypto
-    stablecoins = [h for h in holdings if h['symbol'] in ['USDT', 'MUSD']]
-    cryptos = [h for h in holdings if h['symbol'] not in ['USDT', 'MUSD']]
-    
-    # Calculate current values
-    current_stable_value = sum(h['value_brl'] for h in stablecoins)
-    current_crypto_value = sum(h['value_brl'] for h in cryptos)
-    
-    # Target values (70-30 split)
-    target_crypto_value = total_value * 0.70
-    target_stable_value = total_value * 0.30
-    
-    # Calculate target allocations for individual cryptos
-    # Maintain relative proportions within crypto allocation
-    crypto_allocations = {}
-    if current_crypto_value > 0:
-        for crypto in cryptos:
-            current_weight = crypto['value_brl'] / current_crypto_value
-            target_value = target_crypto_value * current_weight
-            crypto_allocations[crypto['symbol']] = {
-                'current_value': crypto['value_brl'],
-                'target_value': target_value,
-                'difference': target_value - crypto['value_brl'],
-                'price_brl': crypto['price_brl']
-            }
-    
-    # Stablecoin allocation
-    stable_allocations = {}
-    for stable in stablecoins:
-        stable_allocations[stable['symbol']] = {
-            'current_value': stable['value_brl'],
-            'target_value': target_stable_value,
-            'difference': target_stable_value - stable['value_brl'],
-            'price_brl': stable['price_brl']
-        }
-    
-    return {
-        'total_value': total_value,
-        'crypto_allocations': crypto_allocations,
-        'stable_allocations': stable_allocations,
-        'current_percentages': {
-            'crypto': (current_crypto_value / total_value) * 100,
-            'stable': (current_stable_value / total_value) * 100
-        }
-    }
-
-def auto_rebalance(portfolio_data: dict):
-    """Execute portfolio rebalancing based on the 70-30 strategy by directly updating holdings"""
     try:
-        # Calculate target allocations
-        allocations = calculate_target_allocations(portfolio_data)
-        
-        # Check if rebalancing is needed (using 2.5% threshold)
-        current_stable_pct = allocations['current_percentages']['stable']
-        if abs(current_stable_pct - 30) <= 2.5:
-            st.info(f"Portfolio is already well balanced! Current allocation: {current_stable_pct:.1f}% stablecoins")
-            return
-        
-        # Get stablecoin info (using USDT)
-        stable_symbol = 'USDT'
-        stable_info = next(
-            (h for h in portfolio_data['holdings'] if h['symbol'] == stable_symbol),
-            None
-        )
-        if not stable_info:
-            st.error(f"No {stable_symbol} holdings found! Cannot rebalance without {stable_symbol}.")
-            return
-
-        total_value = portfolio_data['total_value_brl']
-        target_stable_value = total_value * 0.30  # 30% in stablecoins
-        target_crypto_value = total_value * 0.70  # 70% in crypto
-
-        # Calculate and update new holdings
-        for holding in portfolio_data['holdings']:
-            symbol = holding['symbol']
-            price_brl = holding['price_brl']
-            
-            if symbol == stable_symbol:
-                # Calculate new stablecoin amount
-                new_amount = target_stable_value / price_brl
-            else:
-                # Calculate new crypto amount maintaining relative proportions
-                current_crypto_value = sum(h['value_brl'] for h in portfolio_data['holdings'] if h['symbol'] != stable_symbol)
-                if current_crypto_value > 0:
-                    crypto_weight = holding['value_brl'] / current_crypto_value
-                    target_value = target_crypto_value * crypto_weight
-                    new_amount = target_value / price_brl
-                else:
-                    new_amount = 0
-
-            # Update holding with new amount
-            st.session_state.portfolio.update_holdings(symbol, new_amount)
-        
-        st.success(f"Portfolio successfully rebalanced from {current_stable_pct:.1f}% stablecoins to target 30% allocation.")
-        st.rerun()
-        
+        # Create a new portfolio instance for each update
+        portfolio = CryptoPortfolio()
+        portfolio_data = run_async(portfolio.get_portfolio_data(force_refresh=True))
+        st.session_state.portfolio_data = portfolio_data
+        st.session_state.last_update = datetime.now()
+        return portfolio_data
     except Exception as e:
-        st.error(f"Error during rebalancing: {str(e)}")
+        st.error(f"Failed to update portfolio: {str(e)}")
+        return st.session_state.portfolio_data
+
+def auto_update_portfolio():
+    """Auto-update portfolio data every 5 minutes"""
+    if 'last_auto_update' not in st.session_state:
+        st.session_state.last_auto_update = datetime.min
+    
+    current_time = datetime.now()
+    if (current_time - st.session_state.last_auto_update).total_seconds() >= 300:  # 5 minutes
+        try:
+            # Create a new portfolio instance for auto-update
+            portfolio_data = update_portfolio_data()
+            st.session_state.last_auto_update = current_time
+            return portfolio_data
+        except Exception as e:
+            st.error(f"Failed to auto-update portfolio: {str(e)}")
+            return st.session_state.portfolio_data
+    return st.session_state.portfolio_data
 
 def display_portfolio_overview():
     """Display the portfolio overview section"""
     st.markdown("# Portfolio Overview")
     
-    # Get portfolio data
-    if st.session_state.portfolio_data is None:
-        with st.spinner('Loading portfolio data...'):
-            portfolio_data = run_async(st.session_state.portfolio.get_portfolio_data())
-            st.session_state.portfolio_data = portfolio_data
-            st.rerun()
+    # Add update button in the sidebar with last update time
+    last_update = st.session_state.portfolio_data.get('timestamp', 'Never') if st.session_state.portfolio_data else 'Never'
+    last_update_dt = datetime.fromisoformat(last_update) if last_update != 'Never' else None
+    last_update_str = last_update_dt.strftime("%Y-%m-%d %H:%M:%S") if last_update_dt else 'Never'
     
-    portfolio_data = st.session_state.portfolio_data
-    if not portfolio_data or not portfolio_data.get('holdings'):
-        st.warning("No portfolio data available. Please add holdings in the Edit Holdings tab.")
-        return
+    st.sidebar.markdown("### Portfolio Updates")
+    st.sidebar.text(f"Last Update: {last_update_str}")
+    
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        if st.button("🔄 Update Now", key="update_portfolio"):
+            with st.spinner('Updating portfolio data...'):
+                try:
+                    # Create a new portfolio instance for manual update
+                    st.session_state.portfolio_data = update_portfolio_data()
+                    st.success('Portfolio updated successfully!')
+                    time.sleep(0.5)  # Add a small delay before rerun
+                    st.rerun()
+                except Exception as e:
+                    st.error(f'Failed to update portfolio: {str(e)}')
+                    return
+    
+    with col2:
+        auto_update = st.checkbox("Auto Update", value=True, key="auto_update")
+    
+    if auto_update:
+        portfolio_data = auto_update_portfolio()
+    else:
+        portfolio_data = st.session_state.portfolio_data
+    
+    if portfolio_data is None:
+        with st.spinner('Loading portfolio data...'):
+            portfolio_data = update_portfolio_data()
+            st.rerun()
 
     # Portfolio Value Card
     total_value = portfolio_data.get('total_value_brl', 0)
@@ -563,9 +513,10 @@ def edit_holdings():
                     else:
                         portfolio.update_holdings(symbol, amount)
                         st.success(f"Updated {symbol} amount to {amount}")
-                    # Update portfolio data
-                    portfolio_data = run_async(portfolio.get_portfolio_data())
+                    # Update portfolio data with force_refresh=True
+                    portfolio_data = run_async(portfolio.get_portfolio_data(force_refresh=True))
                     st.session_state.portfolio_data = portfolio_data
+                    time.sleep(0.5)  # Add a small delay before rerun
                     st.rerun()
                 except Exception as e:
                     st.error(str(e))
@@ -597,9 +548,10 @@ def edit_holdings():
                     try:
                         portfolio.update_holdings(holding['symbol'], new_amount)
                         st.success(f"Updated {holding['symbol']} amount to {new_amount}")
-                        # Update portfolio data
-                        portfolio_data = run_async(portfolio.get_portfolio_data())
+                        # Update portfolio data with force_refresh=True
+                        portfolio_data = run_async(portfolio.get_portfolio_data(force_refresh=True))
                         st.session_state.portfolio_data = portfolio_data
+                        time.sleep(0.5)  # Add a small delay before rerun
                         st.rerun()
                     except Exception as e:
                         st.error(str(e))
@@ -610,9 +562,10 @@ def edit_holdings():
                         try:
                             portfolio.remove_holding(holding['symbol'])
                             st.success(f"Removed {holding['symbol']} from portfolio")
-                            # Update portfolio data
-                            portfolio_data = run_async(portfolio.get_portfolio_data())
+                            # Update portfolio data with force_refresh=True
+                            portfolio_data = run_async(portfolio.get_portfolio_data(force_refresh=True))
                             st.session_state.portfolio_data = portfolio_data
+                            time.sleep(0.5)  # Add a small delay before rerun
                             st.rerun()
                         except Exception as e:
                             st.error(str(e))
@@ -646,6 +599,118 @@ def display_market_analysis():
         st.error(f"Error in market analysis: {str(e)}")
         return
 
+def calculate_target_allocations(portfolio_data: dict) -> dict:
+    """Calculate target allocations for each asset based on the 70-30 strategy"""
+    total_value = portfolio_data['total_value_brl']
+    holdings = portfolio_data['holdings']
+    
+    # Separate stablecoins and crypto
+    stablecoins = [h for h in holdings if h['symbol'] in ['USDT', 'MUSD']]
+    cryptos = [h for h in holdings if h['symbol'] not in ['USDT', 'MUSD']]
+    
+    # Calculate current values
+    current_stable_value = sum(h['value_brl'] for h in stablecoins)
+    current_crypto_value = sum(h['value_brl'] for h in cryptos)
+    
+    # Target values (70-30 split)
+    target_crypto_value = total_value * 0.70
+    target_stable_value = total_value * 0.30
+    
+    # Calculate target allocations for individual cryptos
+    # Maintain relative proportions within crypto allocation
+    crypto_allocations = {}
+    if current_crypto_value > 0:
+        for crypto in cryptos:
+            current_weight = crypto['value_brl'] / current_crypto_value
+            target_value = target_crypto_value * current_weight
+            crypto_allocations[crypto['symbol']] = {
+                'current_value': crypto['value_brl'],
+                'target_value': target_value,
+                'difference': target_value - crypto['value_brl'],
+                'price_brl': crypto['price_brl']
+            }
+    
+    # Stablecoin allocation
+    stable_allocations = {}
+    for stable in stablecoins:
+        stable_allocations[stable['symbol']] = {
+            'current_value': stable['value_brl'],
+            'target_value': target_stable_value,
+            'difference': target_stable_value - stable['value_brl'],
+            'price_brl': stable['price_brl']
+        }
+    
+    return {
+        'total_value': total_value,
+        'crypto_allocations': crypto_allocations,
+        'stable_allocations': stable_allocations,
+        'current_percentages': {
+            'crypto': (current_crypto_value / total_value) * 100,
+            'stable': (current_stable_value / total_value) * 100
+        }
+    }
+
+def auto_rebalance(portfolio_data: dict):
+    """Execute portfolio rebalancing based on the 70-30 strategy by directly updating holdings"""
+    try:
+        # Calculate target allocations
+        allocations = calculate_target_allocations(portfolio_data)
+        
+        # Check if rebalancing is needed (using 2.5% threshold)
+        current_stable_pct = allocations['current_percentages']['stable']
+        if abs(current_stable_pct - 30) <= 2.5:
+            st.info(f"Portfolio is already well balanced! Current allocation: {current_stable_pct:.1f}% stablecoins")
+            return
+        
+        # Get stablecoin info (using USDT)
+        stable_symbol = 'USDT'
+        stable_info = next(
+            (h for h in portfolio_data['holdings'] if h['symbol'] == stable_symbol),
+            None
+        )
+        if not stable_info:
+            st.error(f"No {stable_symbol} holdings found! Cannot rebalance without {stable_symbol}.")
+            return
+
+        total_value = portfolio_data['total_value_brl']
+        target_stable_value = total_value * 0.30  # 30% in stablecoins
+        target_crypto_value = total_value * 0.70  # 70% in crypto
+
+        # Create a new portfolio instance for rebalancing
+        portfolio = CryptoPortfolio()
+        
+        # Calculate and update new holdings
+        for holding in portfolio_data['holdings']:
+            symbol = holding['symbol']
+            price_brl = holding['price_brl']
+            
+            if symbol == stable_symbol:
+                # Calculate new stablecoin amount
+                new_amount = target_stable_value / price_brl
+            else:
+                # Calculate new crypto amount maintaining relative proportions
+                current_crypto_value = sum(h['value_brl'] for h in portfolio_data['holdings'] if h['symbol'] != stable_symbol)
+                if current_crypto_value > 0:
+                    crypto_weight = holding['value_brl'] / current_crypto_value
+                    target_value = target_crypto_value * crypto_weight
+                    new_amount = target_value / price_brl
+                else:
+                    new_amount = 0
+
+            # Update holding with new amount
+            portfolio.update_holdings(symbol, new_amount)
+        
+        # Update portfolio data after rebalancing
+        st.session_state.portfolio = portfolio
+        st.session_state.portfolio_data = run_async(portfolio.get_portfolio_data(force_refresh=True))
+        
+        st.success(f"Portfolio successfully rebalanced from {current_stable_pct:.1f}% stablecoins to target 30% allocation.")
+        time.sleep(0.5)  # Add a small delay before rerun
+        st.rerun()
+        
+    except Exception as e:
+        st.error(f"Error during rebalancing: {str(e)}")
+
 # Create tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "Portfolio Overview",
@@ -673,11 +738,6 @@ with tab5:
 # Sidebar
 with st.sidebar:
     st.title("Controls")
-    if st.button("🔄 Update Values"):
-        with st.spinner('Updating portfolio data...'):
-            portfolio_data = run_async(st.session_state.portfolio.get_portfolio_data())
-            st.session_state.portfolio_data = portfolio_data
-            st.rerun()
 
 # Footer
 st.markdown("---")

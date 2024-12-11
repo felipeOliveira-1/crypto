@@ -129,10 +129,13 @@ class CryptoPortfolio:
         del self.portfolio[symbol]
         self._save_portfolio()
 
-    async def get_portfolio_data(self) -> Dict:
+    async def get_portfolio_data(self, force_refresh: bool = False) -> Dict:
         """Get current portfolio data with market information"""
         # Get market data for all portfolio symbols
-        market_data = await self.cmc_service.get_market_data(list(self.portfolio.keys()))
+        market_data = await self.cmc_service.get_market_data(
+            list(self.portfolio.keys()),
+            force_refresh=force_refresh
+        )
         
         # Calculate holdings values and metrics
         holdings_summary = self.financial_service.calculate_holdings_value(
