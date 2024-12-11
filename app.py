@@ -261,8 +261,12 @@ def display_portfolio_overview():
                 subset=['24h Change (%)'],
                 cmap='RdYlGn',
                 vmin=-10,
-                vmax=10
-            ),
+                vmax=10,
+                text_color_threshold=0.5
+            ).set_properties(**{
+                'background-color': 'rgb(17, 17, 17)',
+                'color': 'white'
+            }),
             use_container_width=True
         )
         
