@@ -546,90 +546,95 @@ def edit_holdings():
 
 def auto_rebalance(portfolio_data: dict):
     """Execute automatic rebalancing transactions based on the 70-30 strategy"""
-    total_value = portfolio_data['total_value_brl']
-    target_usd = total_value * 0.30
-    
-    # Calculate current USD value
-    current_usd = sum(h['value_brl'] for h in portfolio_data['holdings'] if h['symbol'] in ['USDT', 'MUSD'])
-    
-    # Calculate how much to rebalance
-    usd_difference = target_usd - current_usd
-    
-    if abs(usd_difference) <= 1:  # Using 1 BRL threshold
-        st.info("Portfolio is already well balanced!")
-        return
-    
-    # Determine if we need to buy or sell USD
-    if usd_difference > 0:
-        # Need to sell crypto and buy USD
-        # Find the crypto with highest allocation
-        crypto_holdings = [h for h in portfolio_data['holdings'] if h['symbol'] not in ['USDT', 'MUSD']]
-        if not crypto_holdings:
-            st.error("No crypto holdings found to rebalance!")
+    try:
+        total_value = portfolio_data['total_value_brl']
+        target_usd = total_value * 0.30
+        
+        # Calculate current USD value
+        current_usd = sum(h['value_brl'] for h in portfolio_data['holdings'] if h['symbol'] in ['USDT', 'MUSD'])
+        
+        # Calculate how much to rebalance
+        usd_difference = target_usd - current_usd
+        
+        if abs(usd_difference) <= 1:  # Using 1 BRL threshold
+            st.info("Portfolio is already well balanced!")
             return
-            
-        largest_holding = max(crypto_holdings, key=lambda x: x['value_brl'])
         
-        # Calculate amount to sell in the crypto's units
-        amount_to_sell = abs(usd_difference) / largest_holding['price_brl']
-        
-        # Add sell transaction
-        st.session_state.transaction_manager.add_transaction(
-            'SELL',
-            largest_holding['symbol'],
-            amount_to_sell,
-            largest_holding['price_brl'],
-            datetime.now()
-        )
-        
-        # Add buy transaction for USD
-        st.session_state.transaction_manager.add_transaction(
-            'BUY',
-            'USDT',
-            abs(usd_difference) / portfolio_data['holdings'][0]['price_brl'],  # Assuming first holding is USDT
-            portfolio_data['holdings'][0]['price_brl'],
-            datetime.now()
-        )
-        
-    else:
-        # Need to sell USD and buy crypto
-        # Find USD holding
+        # Find USD holding first
         usd_holding = next((h for h in portfolio_data['holdings'] if h['symbol'] == 'USDT'), None)
         if not usd_holding:
-            st.error("No USD holdings found to rebalance!")
+            st.error("No USDT holdings found! Cannot rebalance without USDT.")
             return
             
-        # Find the crypto with lowest allocation (excluding USD)
+        # Get all crypto holdings (excluding stablecoins)
         crypto_holdings = [h for h in portfolio_data['holdings'] if h['symbol'] not in ['USDT', 'MUSD']]
         if not crypto_holdings:
             st.error("No crypto holdings found to rebalance!")
             return
+        
+        # Format current allocation for notes
+        current_crypto_pct = ((total_value - current_usd) / total_value) * 100
+        current_usd_pct = (current_usd / total_value) * 100
+        
+        # Determine if we need to buy or sell USD
+        if usd_difference > 0:
+            # Need to sell crypto and buy USD
+            largest_holding = max(crypto_holdings, key=lambda x: x['value_brl'])
             
-        smallest_holding = min(crypto_holdings, key=lambda x: x['value_brl'])
+            # Calculate amount to sell in the crypto's units
+            amount_to_sell = abs(usd_difference) / largest_holding['price_brl']
+            
+            # Add sell transaction for crypto
+            notes = f"Rebalancing: Selling {largest_holding['symbol']} to increase USD allocation from {current_usd_pct:.1f}% to 30%"
+            st.session_state.transaction_manager.add_transaction(
+                transaction_type='SELL',
+                symbol=largest_holding['symbol'],
+                amount=amount_to_sell,
+                price_brl=largest_holding['price_brl'],
+                notes=notes
+            )
+            
+            # Add buy transaction for USD
+            notes = f"Rebalancing: Buying USDT to increase USD allocation from {current_usd_pct:.1f}% to 30%"
+            st.session_state.transaction_manager.add_transaction(
+                transaction_type='BUY',
+                symbol='USDT',
+                amount=abs(usd_difference) / usd_holding['price_brl'],
+                price_brl=usd_holding['price_brl'],
+                notes=notes
+            )
+            
+        else:
+            # Need to sell USD and buy crypto
+            smallest_holding = min(crypto_holdings, key=lambda x: x['value_brl'])
+            amount_to_sell_usd = abs(usd_difference)
+            
+            # Add sell transaction for USD
+            notes = f"Rebalancing: Selling USDT to decrease USD allocation from {current_usd_pct:.1f}% to 30%"
+            st.session_state.transaction_manager.add_transaction(
+                transaction_type='SELL',
+                symbol='USDT',
+                amount=amount_to_sell_usd / usd_holding['price_brl'],
+                price_brl=usd_holding['price_brl'],
+                notes=notes
+            )
+            
+            # Add buy transaction for crypto
+            notes = f"Rebalancing: Buying {smallest_holding['symbol']} to decrease USD allocation from {current_usd_pct:.1f}% to 30%"
+            st.session_state.transaction_manager.add_transaction(
+                transaction_type='BUY',
+                symbol=smallest_holding['symbol'],
+                amount=amount_to_sell_usd / smallest_holding['price_brl'],
+                price_brl=smallest_holding['price_brl'],
+                notes=notes
+            )
         
-        # Calculate amount to sell in USD
-        amount_to_sell_usd = abs(usd_difference)
+        st.success(f"Rebalancing transactions executed successfully! Portfolio adjusted from {current_usd_pct:.1f}% USD to target 30% USD allocation.")
+        st.rerun()
         
-        # Add sell transaction for USD
-        st.session_state.transaction_manager.add_transaction(
-            'SELL',
-            'USDT',
-            amount_to_sell_usd / usd_holding['price_brl'],
-            usd_holding['price_brl'],
-            datetime.now()
-        )
-        
-        # Add buy transaction for crypto
-        st.session_state.transaction_manager.add_transaction(
-            'BUY',
-            smallest_holding['symbol'],
-            amount_to_sell_usd / smallest_holding['price_brl'],
-            smallest_holding['price_brl'],
-            datetime.now()
-        )
-    
-    st.success("Rebalancing transactions executed successfully!")
-    st.rerun()
+    except Exception as e:
+        st.error(f"Error during rebalancing: {str(e)}")
+        return
 
 def display_market_analysis():
     st.title("Market Analysis")
