@@ -9,7 +9,7 @@ class FinancialService:
         
         for symbol, amount in holdings.items():
             if symbol == 'MUSD':  # Special handling for MUSD stablecoin
-                usd_brl_rate = market_data.get('USDT', {}).get('quote', {}).get('BRL', {}).get('price', 5.0)
+                usd_brl_rate = market_data.get('USDT', {}).get('price_brl', 5.0)
                 holding = {
                     'symbol': symbol,
                     'amount': amount,
@@ -21,8 +21,8 @@ class FinancialService:
                     'market_cap': 0
                 }
             elif symbol in market_data:
-                crypto_data = market_data[symbol]['quote']['BRL']
-                price_brl = crypto_data['price']
+                crypto_data = market_data[symbol]
+                price_brl = crypto_data['price_brl']
                 holding = {
                     'symbol': symbol,
                     'amount': amount,
@@ -30,10 +30,11 @@ class FinancialService:
                     'value_brl': amount * price_brl,
                     'percent_change_24h': crypto_data['percent_change_24h'],
                     'percent_change_7d': crypto_data['percent_change_7d'],
-                    'volume_24h': crypto_data['volume_24h'],
-                    'market_cap': crypto_data['market_cap']
+                    'volume_24h': 0,  # These metrics are not critical for now
+                    'market_cap': 0
                 }
             else:
+                print(f"Warning: No market data available for {symbol}")
                 continue
                 
             holdings_summary.append(holding)

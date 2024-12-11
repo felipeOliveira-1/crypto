@@ -210,27 +210,26 @@ if 'portfolio' not in st.session_state:
 # Header
 st.title("📈 Crypto Portfolio Tracker")
 
+async def get_portfolio_data():
+    """Async function to get portfolio data"""
+    portfolio = CryptoPortfolio()
+    return await portfolio.get_portfolio_data()
+
 def run_async(coroutine):
     """Helper function to run async code"""
     try:
-        # Try to get the current event loop
         loop = asyncio.get_event_loop()
     except RuntimeError:
-        # If there is no event loop, create a new one
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
     
-    try:
-        return loop.run_until_complete(coroutine)
-    except Exception as e:
-        print(f"Error in async operation: {e}")
-        raise e
+    return asyncio.run(coroutine)
 
 def update_portfolio_data():
     """Update portfolio data and last update time"""
     with st.spinner('Updating portfolio data...'):
         st.session_state.last_update = datetime.now()
-        return run_async(st.session_state.portfolio.get_portfolio_data())
+        return run_async(get_portfolio_data())
 
 def calculate_rebalancing_actions(portfolio_data: dict) -> dict:
     """Calculate necessary trades to maintain 70-30 allocation"""
@@ -635,19 +634,29 @@ def auto_rebalance(portfolio_data: dict):
 def display_market_analysis():
     st.title("Market Analysis")
     
-    # Get portfolio data and analysis
-    portfolio = CryptoPortfolio()
-    portfolio_data = run_async(portfolio.get_portfolio_data())
-    analysis = portfolio.get_market_analysis(portfolio_data)
+    try:
+        # Get portfolio data and analysis
+        portfolio = CryptoPortfolio()
+        portfolio_data = run_async(get_portfolio_data())
+        
+        if not portfolio_data:
+            st.error("Failed to fetch portfolio data. Please try again.")
+            return
+            
+        analysis = portfolio.get_market_analysis(portfolio_data)
+        
+        # Display the analysis
+        st.markdown(analysis)
+        
+        # Add rebalancing button
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("🔄 Execute Rebalancing", help="Automatically create transactions to achieve 70-30 allocation"):
+                auto_rebalance(portfolio_data)
     
-    # Display the analysis
-    st.markdown(analysis)
-    
-    # Add rebalancing button
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        if st.button("🔄 Execute Rebalancing", help="Automatically create transactions to achieve 70-30 allocation"):
-            auto_rebalance(portfolio_data)
+    except Exception as e:
+        st.error(f"Error in market analysis: {str(e)}")
+        return
 
 # Create tabs
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
