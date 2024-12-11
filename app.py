@@ -322,7 +322,7 @@ def display_market_analysis():
     if st.button("Refresh Analysis"):
         st.session_state.last_analysis = analysis
         st.session_state.last_analysis_time = datetime.now()
-        st.experimental_rerun()
+        st.rerun()
 
 # Create tabs
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -374,7 +374,7 @@ if st.session_state.last_update:
     # Check if it's time to update
     time_since_update = (datetime.now() - st.session_state.last_update).total_seconds()
     if time_since_update >= update_interval:
-        st.experimental_rerun()
+        st.rerun()
 
 # Footer
 st.markdown("---")

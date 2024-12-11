@@ -34,5 +34,14 @@
         "total_brl": 6.1,
         "type": "sell",
         "notes": ""
+    },
+    {
+        "timestamp": "2024-12-11T09:15:33.858197",
+        "symbol": "MUSD",
+        "amount": 3.453243925213419,
+        "price_brl": 6.055176075842286,
+        "total_brl": 20.91,
+        "type": "buy",
+        "notes": ""
     }
 ]
