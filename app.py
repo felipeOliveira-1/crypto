@@ -34,6 +34,148 @@ def display_tradingview_widget():
     """
     components.html(tradingview_widget, height=600)
 
+def display_market_quotes_widget():
+    market_quotes_widget = """
+    <div class="tradingview-widget-container">
+        <div class="tradingview-widget-container__widget"></div>
+        <div class="tradingview-widget-copyright">
+            <a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank">
+                <span class="blue-text">Track all markets on TradingView</span>
+            </a>
+        </div>
+        <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-market-quotes.js" async>
+        {
+            "width": "100%",
+            "height": 550,
+            "symbolsGroups": [
+                {
+                    "name": "Cryptocurrencies",
+                    "originalName": "Cryptocurrencies",
+                    "symbols": [
+                        {
+                            "name": "BINANCE:BTCUSDT",
+                            "displayName": "Bitcoin USD"
+                        },
+                        {
+                            "name": "BINANCE:BTCBRL",
+                            "displayName": "Bitcoin BRL"
+                        },
+                        {
+                            "name": "BINANCE:UNIUSDT",
+                            "displayName": "Uniswap"
+                        },
+                        {
+                            "name": "BINANCE:LINKUSDT",
+                            "displayName": "Chainlink"
+                        },
+                        {
+                            "name": "BINANCE:ETHUSDT",
+                            "displayName": "Ethereum"
+                        },
+                        {
+                            "name": "BINANCE:LTCUSDT",
+                            "displayName": "Litecoin"
+                        }
+                    ]
+                },
+                {
+                    "name": "Indices",
+                    "originalName": "Indices",
+                    "symbols": [
+                        {
+                            "name": "FOREXCOM:SPXUSD",
+                            "displayName": "S&P 500 Index"
+                        },
+                        {
+                            "name": "FOREXCOM:NSXUSD",
+                            "displayName": "US 100 Cash CFD"
+                        },
+                        {
+                            "name": "FOREXCOM:DJI",
+                            "displayName": "Dow Jones Industrial Average Index"
+                        },
+                        {
+                            "name": "INDEX:NKY",
+                            "displayName": "Japan 225"
+                        },
+                        {
+                            "name": "INDEX:DEU40",
+                            "displayName": "DAX Index"
+                        },
+                        {
+                            "name": "FOREXCOM:UKXGBP",
+                            "displayName": "FTSE 100 Index"
+                        }
+                    ]
+                },
+                {
+                    "name": "Futures",
+                    "originalName": "Futures",
+                    "symbols": [
+                        {
+                            "name": "CME_MINI:ES1!",
+                            "displayName": "S&P 500"
+                        },
+                        {
+                            "name": "CME:6E1!",
+                            "displayName": "Euro"
+                        },
+                        {
+                            "name": "COMEX:GC1!",
+                            "displayName": "Gold"
+                        },
+                        {
+                            "name": "NYMEX:CL1!",
+                            "displayName": "WTI Crude Oil"
+                        },
+                        {
+                            "name": "NYMEX:NG1!",
+                            "displayName": "Gas"
+                        },
+                        {
+                            "name": "CBOT:ZC1!",
+                            "displayName": "Corn"
+                        }
+                    ]
+                },
+                {
+                    "name": "Bonds",
+                    "originalName": "Bonds",
+                    "symbols": [
+                        {
+                            "name": "CBOT:ZB1!",
+                            "displayName": "T-Bond"
+                        },
+                        {
+                            "name": "CBOT:UB1!",
+                            "displayName": "Ultra T-Bond"
+                        },
+                        {
+                            "name": "EUREX:FGBL1!",
+                            "displayName": "Euro Bund"
+                        },
+                        {
+                            "name": "EUREX:FBTP1!",
+                            "displayName": "Euro BTP"
+                        },
+                        {
+                            "name": "EUREX:FGBM1!",
+                            "displayName": "Euro BOBL"
+                        }
+                    ]
+                }
+            ],
+            "showSymbolLogo": true,
+            "isTransparent": false,
+            "colorTheme": "dark",
+            "locale": "en",
+            "backgroundColor": "#131722"
+        }
+        </script>
+    </div>
+    """
+    components.html(market_quotes_widget, height=600)
+
 # Page config
 st.set_page_config(
     page_title="Crypto Portfolio Tracker",
@@ -76,61 +218,57 @@ def display_portfolio_overview():
     portfolio_data = asyncio.run(portfolio.get_portfolio_data())
     
     if portfolio_data['holdings']:
-        # Create two columns for layout
-        col1, col2 = st.columns([2, 1])
-        
+        # Display portfolio metrics
+        col1, col2, col3 = st.columns(3)
         with col1:
-            # Display portfolio metrics
-            metric_col1, metric_col2, metric_col3 = st.columns(3)
-            with metric_col1:
-                st.metric("Total Balance", f"R$ {portfolio_data['total_value_brl']:,.2f}")
-            with metric_col2:
-                st.metric("24h Change", f"{portfolio_data['weighted_24h_change']:.2f}%")
-            with metric_col3:
-                st.metric("7d Change", f"{portfolio_data['weighted_7d_change']:.2f}%")
-            
-            # Display portfolio composition pie chart
-            st.subheader("Portfolio Composition")
-            fig = px.pie(
-                values=[h['value_brl'] for h in portfolio_data['holdings']],
-                names=[h['symbol'] for h in portfolio_data['holdings']],
-                title="Portfolio Composition",
-                hole=0.3
-            )
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Display holdings table
-            st.subheader("Holdings")
-            df = pd.DataFrame([{
-                'Symbol': h['symbol'],
-                'Amount': h['amount'],
-                'Price (BRL)': h['price_brl'],
-                'Total Value (BRL)': h['value_brl'],
-                '24h Change (%)': h['percent_change_24h'] / 100,
-                '7d Change (%)': h['percent_change_7d'] / 100,
-                'Portfolio %': h['portfolio_percentage']
-            } for h in portfolio_data['holdings']]).set_index('Symbol')
-            
-            st.dataframe(
-                df.style.format({
-                    'Amount': '{:.8f}',
-                    'Price (BRL)': 'R$ {:,.2f}',
-                    'Total Value (BRL)': 'R$ {:,.2f}',
-                    '24h Change (%)': '{:.2%}',
-                    '7d Change (%)': '{:.2%}',
-                    'Portfolio %': '{:.2f}%'
-                }).background_gradient(
-                    subset=['24h Change (%)'],
-                    cmap='RdYlGn',
-                    vmin=-10,
-                    vmax=10
-                ),
-                use_container_width=True
-            )
-        
+            st.metric("Total Balance", f"R$ {portfolio_data['total_value_brl']:,.2f}")
         with col2:
-            # Display TradingView widget
-            display_tradingview_widget()
+            st.metric("24h Change", f"{portfolio_data['weighted_24h_change']:.2f}%")
+        with col3:
+            st.metric("7d Change", f"{portfolio_data['weighted_7d_change']:.2f}%")
+        
+        # Display portfolio composition pie chart
+        st.subheader("Portfolio Composition")
+        fig = px.pie(
+            values=[h['value_brl'] for h in portfolio_data['holdings']],
+            names=[h['symbol'] for h in portfolio_data['holdings']],
+            title="Portfolio Composition",
+            hole=0.3
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Display holdings table
+        st.subheader("Holdings")
+        df = pd.DataFrame([{
+            'Symbol': h['symbol'],
+            'Amount': h['amount'],
+            'Price (BRL)': h['price_brl'],
+            'Total Value (BRL)': h['value_brl'],
+            '24h Change (%)': h['percent_change_24h'] / 100,
+            '7d Change (%)': h['percent_change_7d'] / 100,
+            'Portfolio %': h['portfolio_percentage']
+        } for h in portfolio_data['holdings']]).set_index('Symbol')
+        
+        st.dataframe(
+            df.style.format({
+                'Amount': '{:.8f}',
+                'Price (BRL)': 'R$ {:,.2f}',
+                'Total Value (BRL)': 'R$ {:,.2f}',
+                '24h Change (%)': '{:.2%}',
+                '7d Change (%)': '{:.2%}',
+                'Portfolio %': '{:.2f}%'
+            }).background_gradient(
+                subset=['24h Change (%)'],
+                cmap='RdYlGn',
+                vmin=-10,
+                vmax=10
+            ),
+            use_container_width=True
+        )
+        
+        # Display market quotes widget below holdings
+        st.subheader("Global Market Overview")
+        display_market_quotes_widget()
     else:
         st.info("No holdings in portfolio yet. Add some transactions to get started!")
 
