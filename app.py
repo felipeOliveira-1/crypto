@@ -545,6 +545,93 @@ def edit_holdings():
     else:
         st.info("No holdings to edit. Add some transactions first!")
 
+def auto_rebalance(portfolio_data: dict):
+    """Execute automatic rebalancing transactions based on the 70-30 strategy"""
+    total_value = portfolio_data['total_value_brl']
+    target_usd = total_value * 0.30
+    
+    # Calculate current USD value
+    current_usd = sum(h['value_brl'] for h in portfolio_data['holdings'] if h['symbol'] in ['USDT', 'MUSD'])
+    
+    # Calculate how much to rebalance
+    usd_difference = target_usd - current_usd
+    
+    if abs(usd_difference) <= 1:  # Using 1 BRL threshold
+        st.info("Portfolio is already well balanced!")
+        return
+    
+    # Determine if we need to buy or sell USD
+    if usd_difference > 0:
+        # Need to sell crypto and buy USD
+        # Find the crypto with highest allocation
+        crypto_holdings = [h for h in portfolio_data['holdings'] if h['symbol'] not in ['USDT', 'MUSD']]
+        if not crypto_holdings:
+            st.error("No crypto holdings found to rebalance!")
+            return
+            
+        largest_holding = max(crypto_holdings, key=lambda x: x['value_brl'])
+        
+        # Calculate amount to sell in the crypto's units
+        amount_to_sell = abs(usd_difference) / largest_holding['price_brl']
+        
+        # Add sell transaction
+        st.session_state.transaction_manager.add_transaction(
+            'SELL',
+            largest_holding['symbol'],
+            amount_to_sell,
+            largest_holding['price_brl'],
+            datetime.now()
+        )
+        
+        # Add buy transaction for USD
+        st.session_state.transaction_manager.add_transaction(
+            'BUY',
+            'USDT',
+            abs(usd_difference) / portfolio_data['holdings'][0]['price_brl'],  # Assuming first holding is USDT
+            portfolio_data['holdings'][0]['price_brl'],
+            datetime.now()
+        )
+        
+    else:
+        # Need to sell USD and buy crypto
+        # Find USD holding
+        usd_holding = next((h for h in portfolio_data['holdings'] if h['symbol'] == 'USDT'), None)
+        if not usd_holding:
+            st.error("No USD holdings found to rebalance!")
+            return
+            
+        # Find the crypto with lowest allocation (excluding USD)
+        crypto_holdings = [h for h in portfolio_data['holdings'] if h['symbol'] not in ['USDT', 'MUSD']]
+        if not crypto_holdings:
+            st.error("No crypto holdings found to rebalance!")
+            return
+            
+        smallest_holding = min(crypto_holdings, key=lambda x: x['value_brl'])
+        
+        # Calculate amount to sell in USD
+        amount_to_sell_usd = abs(usd_difference)
+        
+        # Add sell transaction for USD
+        st.session_state.transaction_manager.add_transaction(
+            'SELL',
+            'USDT',
+            amount_to_sell_usd / usd_holding['price_brl'],
+            usd_holding['price_brl'],
+            datetime.now()
+        )
+        
+        # Add buy transaction for crypto
+        st.session_state.transaction_manager.add_transaction(
+            'BUY',
+            smallest_holding['symbol'],
+            amount_to_sell_usd / smallest_holding['price_brl'],
+            smallest_holding['price_brl'],
+            datetime.now()
+        )
+    
+    st.success("Rebalancing transactions executed successfully!")
+    st.rerun()
+
 def display_market_analysis():
     st.title("Market Analysis")
     
@@ -556,11 +643,11 @@ def display_market_analysis():
     # Display the analysis
     st.markdown(analysis)
     
-    # Add refresh button
-    if st.button("Refresh Analysis"):
-        st.session_state.last_analysis = analysis
-        st.session_state.last_analysis_time = datetime.now()
-        st.rerun()
+    # Add rebalancing button
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("🔄 Execute Rebalancing", help="Automatically create transactions to achieve 70-30 allocation"):
+            auto_rebalance(portfolio_data)
 
 # Create tabs
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
