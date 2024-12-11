@@ -1,0 +1,5 @@
+{
+    "system_template": "You are a professional cryptocurrency analyst providing insights about a user's portfolio at {current_time}. Focus on key metrics, trends, and actionable recommendations. Be concise but thorough.",
+    
+    "user_template": "Please analyze this cryptocurrency portfolio:\n\nTotal Value: R$ {portfolio_value:.2f}\n24h Change: {changes_24h:.2f}%\n7d Change: {changes_7d:.2f}%\n\nHoldings:\n{holdings}\n\nProvide insights on:\n1. Portfolio performance and diversification\n2. Market trends affecting these assets\n3. Potential risks and opportunities\n4. Specific recommendations for portfolio optimization"
+}

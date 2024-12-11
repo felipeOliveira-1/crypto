@@ -7,3 +7,4 @@ streamlit==1.29.0
 plotly==5.18.0
 matplotlib==3.8.2
 httpx==0.25.2
+aiohttp==3.9.1

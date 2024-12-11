@@ -1,0 +1,38 @@
+[
+    {
+        "timestamp": "2024-12-10T17:29:10.023173",
+        "symbol": "MUSD",
+        "amount": 0.16540874749829004,
+        "price_brl": 6.0456294792410405,
+        "total_brl": 1.0,
+        "type": "buy",
+        "notes": ""
+    },
+    {
+        "timestamp": "2024-12-10T17:29:42.137317",
+        "symbol": "MUSD",
+        "amount": 0.16542140463539085,
+        "price_brl": 6.045166900886395,
+        "total_brl": 1.0,
+        "type": "sell",
+        "notes": ""
+    },
+    {
+        "timestamp": "2024-12-10T17:32:52.760220",
+        "symbol": "MUSD",
+        "amount": 1.0087963064442695,
+        "price_brl": 6.046810402687563,
+        "total_brl": 6.1,
+        "type": "buy",
+        "notes": ""
+    },
+    {
+        "timestamp": "2024-12-10T17:33:09.302141",
+        "symbol": "MUSD",
+        "amount": 1.0087963064442695,
+        "price_brl": 6.046810402687563,
+        "total_brl": 6.1,
+        "type": "sell",
+        "notes": ""
+    }
+]

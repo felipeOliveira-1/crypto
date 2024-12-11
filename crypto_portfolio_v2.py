@@ -2,22 +2,43 @@ import os
 import json
 from datetime import datetime
 from typing import Dict, List
-import requests
 from dotenv import load_dotenv
-from openai import OpenAI
-import httpx
+import asyncio
+
+from services import CoinMarketCapService, FinancialService, OpenAIService, EarningsService
 
 # Load environment variables
 load_dotenv()
 
 class CryptoPortfolio:
     def __init__(self, portfolio=None):
-        self.cmc_api_key = os.getenv('CMC_API_KEY')
-        self.openai_api_key = os.getenv('OPENAI_API_KEY')
-        self.proxies = os.getenv('PROXIES')
+        # Initialize services
+        self.cmc_service = CoinMarketCapService()
+        self.financial_service = FinancialService()
+        self.openai_service = OpenAIService()
+        self.earnings_service = EarningsService()
         
-        # Use provided portfolio or default values
-        self.portfolio = portfolio or {
+        # Portfolio file paths
+        self.portfolio_file = os.path.join(os.path.dirname(__file__), 'portfolio.json')
+        self.daily_values_file = os.path.join(os.path.dirname(__file__), 'daily_values.json')
+        
+        # Load portfolio and daily values
+        self.portfolio = self._load_portfolio() if portfolio is None else portfolio
+        self.daily_values = self._load_daily_values()
+        
+        # Load templates
+        self.templates = self._load_templates()
+
+    def _load_portfolio(self) -> Dict:
+        """Load portfolio from file or return default values"""
+        try:
+            if os.path.exists(self.portfolio_file):
+                with open(self.portfolio_file, 'r') as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"Error loading portfolio: {e}")
+        
+        return {
             'MUSD': 8.61847767,
             'UNI': 0.31159027,
             'ETH': 0.00124575,
@@ -25,163 +46,98 @@ class CryptoPortfolio:
             'LINK': 0.20556793,
             'LTC': 0.03921850
         }
-        
-        self.cmc_base_url = 'https://pro-api.coinmarketcap.com/v1'
-        
-        # Initialize OpenAI client with custom httpx client
-        transport = httpx.HTTPTransport(proxy=self.proxies)
-        http_client = httpx.Client(transport=transport, verify=False)
-        self.openai_client = OpenAI(
-            api_key=self.openai_api_key,
-            http_client=http_client
-        )
-        
-        # Load prompt templates
-        self.system_prompt_template = self._load_prompt_template('system_prompt.xml')
-        self.user_prompt_template = self._load_prompt_template('user_prompt_template.xml')
 
-    def _load_prompt_template(self, filename: str) -> str:
-        """Load a prompt template from the prompts directory"""
-        prompt_path = os.path.join(os.path.dirname(__file__), 'prompts', filename)
+    def _save_portfolio(self):
+        """Save portfolio to file"""
         try:
-            with open(prompt_path, 'r', encoding='utf-8') as file:
-                return file.read()
+            with open(self.portfolio_file, 'w') as f:
+                json.dump(self.portfolio, f, indent=4)
         except Exception as e:
-            print(f"Error loading prompt template {filename}: {e}")
-            return ""
+            print(f"Error saving portfolio: {e}")
 
-    def update_holdings(self, symbol, amount):
+    def _load_templates(self) -> Dict:
+        """Load analysis templates from JSON file"""
+        template_path = os.path.join(os.path.dirname(__file__), 'config', 'templates.json')
+        try:
+            with open(template_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading templates: {e}")
+            return {
+                "system_template": "",
+                "user_template": ""
+            }
+
+    def _load_daily_values(self) -> Dict:
+        """Load daily portfolio values from file"""
+        try:
+            if os.path.exists(self.daily_values_file):
+                with open(self.daily_values_file, 'r') as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"Error loading daily values: {e}")
+        return {'last_update': None, 'values': {}}
+
+    def _save_daily_values(self):
+        """Save daily portfolio values to file"""
+        try:
+            with open(self.daily_values_file, 'w') as f:
+                json.dump(self.daily_values, f, indent=4)
+        except Exception as e:
+            print(f"Error saving daily values: {e}")
+
+    def update_holdings(self, symbol: str, amount: float):
         """Update or add a new cryptocurrency holding"""
         if amount <= 0:
             if symbol in self.portfolio:
                 del self.portfolio[symbol]
         else:
             self.portfolio[symbol] = amount
+        self._save_portfolio()
 
-    def get_crypto_data(self) -> Dict:
-        """Fetch current price data for portfolio cryptocurrencies in BRL"""
-        symbols = ','.join(self.portfolio.keys())
-        url = f"{self.cmc_base_url}/cryptocurrency/quotes/latest"
+    async def get_portfolio_data(self) -> Dict:
+        """Get current portfolio data with market information"""
+        # Get market data for all portfolio symbols
+        market_data = await self.cmc_service.get_market_data(list(self.portfolio.keys()))
         
-        headers = {
-            'X-CMC_PRO_API_KEY': self.cmc_api_key,
-            'Accept': 'application/json'
-        }
+        # Calculate holdings values and metrics
+        holdings_summary = self.financial_service.calculate_holdings_value(
+            self.portfolio, 
+            market_data
+        )
         
-        params = {
-            'symbol': symbols,
-            'convert': 'BRL'
-        }
+        # Calculate overall portfolio metrics
+        portfolio_metrics = self.financial_service.calculate_portfolio_metrics(holdings_summary)
         
-        try:
-            response = requests.get(url, headers=headers, params=params)
-            response.raise_for_status()
-            return response.json()['data']
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching crypto data: {e}")
-            return {}
-
-    def get_usd_brl_rate(self) -> float:
-        """Get current USD/BRL exchange rate from CoinMarketCap"""
-        url = f"{self.cmc_base_url}/cryptocurrency/quotes/latest"
+        # Add timestamp
+        portfolio_metrics['timestamp'] = datetime.now().isoformat()
         
-        headers = {
-            'X-CMC_PRO_API_KEY': self.cmc_api_key,
-            'Accept': 'application/json'
-        }
-        
-        params = {
-            'symbol': 'USDT',  # Using USDT as a proxy for USD
-            'convert': 'BRL'
-        }
-        
-        try:
-            response = requests.get(url, headers=headers, params=params)
-            response.raise_for_status()
-            data = response.json()
-            return data['data']['USDT']['quote']['BRL']['price']
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching USD/BRL rate: {e}")
-            return 6.09  # Fallback value if API call fails
+        return portfolio_metrics
 
-    def calculate_portfolio_value(self) -> Dict:
-        """Calculate current portfolio value and holdings"""
-        crypto_data = self.get_crypto_data()
-        usd_brl_rate = self.get_usd_brl_rate()
-        portfolio_summary = {
-            'total_value_brl': 0,
-            'holdings': []
-        }
+    async def get_earnings_data(self) -> Dict:
+        """Get earnings data for the portfolio"""
+        portfolio_data = await self.get_portfolio_data()
+        return self.earnings_service.calculate_earnings(portfolio_data)
 
-        for symbol, amount in self.portfolio.items():
-            if symbol == 'MUSD':  # Special handling for MUSD stablecoin
-                price_brl = usd_brl_rate  # Using current USD/BRL rate
-                value_brl = amount * price_brl
-                holding = {
-                    'symbol': symbol,
-                    'amount': amount,
-                    'price_brl': price_brl,
-                    'value_brl': value_brl,
-                    'percent_change_24h': 0,  # Stablecoin, so no change
-                    'percent_change_7d': 0,
-                    'volume_24h': 0,
-                    'market_cap': 0
-                }
-                portfolio_summary['holdings'].append(holding)
-                portfolio_summary['total_value_brl'] += value_brl
-            elif symbol in crypto_data:
-                price_brl = crypto_data[symbol]['quote']['BRL']['price']
-                value_brl = amount * price_brl
-                
-                holding = {
-                    'symbol': symbol,
-                    'amount': amount,
-                    'price_brl': price_brl,
-                    'value_brl': value_brl,
-                    'percent_change_24h': crypto_data[symbol]['quote']['BRL']['percent_change_24h'],
-                    'percent_change_7d': crypto_data[symbol]['quote']['BRL']['percent_change_7d'],
-                    'volume_24h': crypto_data[symbol]['quote']['BRL']['volume_24h'],
-                    'market_cap': crypto_data[symbol]['quote']['BRL']['market_cap']
-                }
-                
-                portfolio_summary['holdings'].append(holding)
-                portfolio_summary['total_value_brl'] += value_brl
+    def get_market_analysis(self, portfolio_data: Dict) -> str:
+        """Generate market analysis for the current portfolio"""
+        return self.openai_service.generate_market_analysis(
+            portfolio_data,
+            self.templates
+        )
 
-        return portfolio_summary
+    async def close(self):
+        """Close all service connections"""
+        await self.cmc_service.close()
 
-    def get_market_analysis(self) -> str:
-        """Get AI-powered market analysis and recommendations using advanced prompt engineering"""
-        portfolio_data = self.calculate_portfolio_value()
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Prepare the prompts using templates
-        system_prompt = {
-            "role": "system",
-            "content": self.system_prompt_template
-        }
-
-        user_prompt = {
-            "role": "user",
-            "content": self.user_prompt_template.format(
-                timestamp=current_time,
-                portfolio_data=json.dumps(portfolio_data, indent=2)
-            )
-        }
-
-        try:
-            response = self.openai_client.chat.completions.create(
-                model="gpt-4o",  # Using GPT-4o for faster and more affordable analysis
-                messages=[system_prompt, user_prompt],
-                temperature=0.13,  # Lower temperature for higher precision and consistency
-                max_tokens=2000
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            return f"Error getting AI analysis: {str(e)}\n\nPlease check your OpenAI API key and try again."
+    def __del__(self):
+        """Cleanup on object destruction"""
+        asyncio.run(self.close())
 
     def display_portfolio(self):
         """Display portfolio information and AI analysis"""
-        portfolio_data = self.calculate_portfolio_value()
+        portfolio_data = asyncio.run(self.get_portfolio_data())
+        analysis = self.get_market_analysis(portfolio_data)
         
         print("\n=== Crypto Portfolio Summary ===")
         print(f"Total Portfolio Value: R$ {portfolio_data['total_value_brl']:,.2f}")
@@ -198,7 +154,6 @@ class CryptoPortfolio:
             print(f"  Market Cap: R$ {holding['market_cap']:,.2f}")
 
         print("\n=== AI Market Analysis ===")
-        analysis = self.get_market_analysis()
         print(analysis)
 
 
