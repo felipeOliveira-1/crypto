@@ -142,7 +142,7 @@ class OpenAIService:
 
             # Make API call with specific parameters for analysis
             response = self.client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": system_content},
                     {"role": "user", "content": user_content}
