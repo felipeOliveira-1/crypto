@@ -94,13 +94,13 @@ class OpenAIService:
             holdings_text += f"ANÁLISE DE REBALANCEAMENTO:\n"
             
             # Overall portfolio status
-            if abs(stable_allocation - 30) <= 1:
-                holdings_text += "- STATUS: Portfólio bem balanceado (dentro da margem de 1%)\n"
+            if abs(stable_allocation - 30) <= 2.5:
+                holdings_text += "- STATUS: Portfólio bem balanceado (dentro da margem de 2.5%)\n"
             else:
                 holdings_text += f"- STATUS: Rebalanceamento necessário (desvio de {abs(stable_allocation - 30):.1f}%)\n"
             
             # Detailed adjustments needed
-            if abs(crypto_difference) > 1:
+            if abs(crypto_difference) > (total_value * 0.025):  # 2.5% of total value
                 if crypto_difference > 0:
                     holdings_text += f"- Cryptos: Necessário aumentar exposição em R$ {crypto_difference:.2f}\n"
                     
@@ -122,7 +122,7 @@ class OpenAIService:
                             suggested_reduction = abs(crypto_difference) * weight
                             holdings_text += f"  * {crypto['symbol']}: -R$ {suggested_reduction:.2f}\n"
             
-            if abs(stable_difference) > 1:
+            if abs(stable_difference) > (total_value * 0.025):  # 2.5% of total value
                 if stable_difference > 0:
                     holdings_text += f"- Stablecoins: Necessário aumentar em R$ {stable_difference:.2f}\n"
                 else:
