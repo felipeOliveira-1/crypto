@@ -456,7 +456,7 @@ def display_portfolio_overview():
             return ''
 
     # Style the dataframe
-    styled_df = df.style.applymap(
+    styled_df = df.style.map(
         style_negative_positive,
         subset=['24h Change', '7d Change']
     )
